@@ -3,6 +3,7 @@ package moe.ouom.neriplayer.desktop.net
 import kotlinx.serialization.json.JsonObject
 import moe.ouom.neriplayer.desktop.core.AccountInfo
 import moe.ouom.neriplayer.desktop.core.MediaSource
+import moe.ouom.neriplayer.desktop.core.displayName
 
 sealed interface LoginPollResult {
     /** 二维码过期，需要重新获取 */
@@ -52,7 +53,8 @@ class NeteaseLogin(private val http: HttpService) {
         }
     }
 
-    private fun fetchProfile(pollObject: JsonObject?): AccountInfo? {
+    /** 读取账号信息（登录完成或需要补全昵称 / UID 时调用）。 */
+    fun fetchProfile(pollObject: JsonObject? = null): AccountInfo? {
         val accountText = http.get("https://music.163.com/api/nuser/account/get", headers)
         val root = accountText?.let { NeriJsonParser.parse(it).asObject() }
         val profile = root?.obj("profile")
@@ -62,14 +64,22 @@ class NeteaseLogin(private val http: HttpService) {
             ?: pollObject?.long("userId")?.toString().orEmpty()
         val avatar = profile?.str("avatarUrl") ?: pollObject?.str("avatarUrl")
         val vip = (root?.obj("account")?.long("vipType") ?: 0L) > 0L
-        if (nickname.isBlank() && userId.isBlank()) return null
-        return AccountInfo(
-            source = MediaSource.NETEASE.name,
-            nickname = nickname,
-            userId = userId,
-            avatarUrl = avatar,
-            vip = vip,
-            loginAt = System.currentTimeMillis(),
+        if (nickname.isNotBlank() || userId.isNotBlank()) {
+            return AccountInfo(
+                source = MediaSource.NETEASE.name,
+                nickname = nickname,
+                userId = userId,
+                avatarUrl = avatar,
+                vip = vip,
+                loginAt = System.currentTimeMillis(),
+            )
+        }
+        // 兜底：账号信息接口偶发失败时，只要登录 Cookie 已下发就认为登录成功
+        return parseCookieFallbackAccount(
+            source = MediaSource.NETEASE,
+            cookies = http.cookieSnapshot("netease"),
+            cookieName = "MUSIC_U",
+            userId = "",
         )
     }
 }
@@ -100,6 +110,7 @@ class BiliLogin(private val http: HttpService) {
             86090 -> LoginPollResult.Waiting(scanned = true)
             86038 -> LoginPollResult.Expired
             0 -> {
+                println("[login] bilibili 扫码确认，已获取 Cookie：${http.cookieSnapshot("bilibili").keys}")
                 val info = fetchProfile()
                 if (info == null) {
                     LoginPollResult.Failed("登录成功，但读取账号信息失败")
@@ -113,18 +124,101 @@ class BiliLogin(private val http: HttpService) {
         }
     }
 
-    private fun fetchProfile(): AccountInfo? {
-        val text = http.get("https://api.bilibili.com/x/web-interface/nav", headers) ?: return null
-        val data = NeriJsonParser.parse(text).asObject()?.obj("data") ?: return null
-        if (data.int("isLogin") != 1) return null
-        val vip = (data.obj("vipStatus")?.int("status") ?: data.int("vipStatus") ?: 0) > 0
-        return AccountInfo(
-            source = MediaSource.BILIBILI.name,
-            nickname = data.str("uname").orEmpty(),
-            userId = data.long("mid")?.toString().orEmpty(),
-            avatarUrl = data.str("face"),
-            vip = vip,
-            loginAt = System.currentTimeMillis(),
+    /** 读取账号信息（登录完成或需要补全昵称 / UID 时调用）。 */
+    fun fetchProfile(): AccountInfo? {
+        val navText = http.get("https://api.bilibili.com/x/web-interface/nav", headers)
+        val cookies = http.cookieSnapshot("bilibili")
+        val navRoot = navText?.let { NeriJsonParser.parse(it).asObject() }
+        val navData = navRoot?.obj("data")
+        println(
+            "[login] bilibili nav code=${navRoot?.int("code")} isLogin=${navData?.bool("isLogin")} " +
+                "cookieKeys=${cookies.keys}"
         )
+        if (navData?.bool("isLogin") == true) {
+            return biliAccountFromNav(navData)
+        }
+        // 兜底一：成员信息接口
+        val memberText = http.get("https://api.bilibili.com/x/member/web/account", headers)
+        val memberData = memberText?.let { NeriJsonParser.parse(it).asObject()?.obj("data") }
+        val fromMember = memberData?.let { biliAccountFromMember(it) }
+        if (fromMember != null) {
+            println("[login] bilibili 使用成员接口兜底：${fromMember.displayName()}")
+            return fromMember
+        }
+        // 兜底二：只要 SESSDATA 已下发就认为登录成功（昵称留空，界面显示 UID）
+        val fromCookie = parseCookieFallbackAccount(
+            source = MediaSource.BILIBILI,
+            cookies = cookies,
+            cookieName = "SESSDATA",
+            userId = cookies["DedeUserID"].orEmpty(),
+        )
+        println("[login] bilibili Cookie 兜底结果：${fromCookie?.displayName() ?: "未登录"}")
+        return fromCookie
     }
+}
+
+/** 从 nav 接口的 data 构造账号信息（isLogin 为 JSON 布尔值）。 */
+fun biliAccountFromNav(data: JsonObject): AccountInfo {
+    val vipStatus = data.obj("vipStatus")?.int("status") ?: data.int("vipStatus") ?: 0
+    return AccountInfo(
+        source = MediaSource.BILIBILI.name,
+        nickname = data.str("uname").orEmpty(),
+        userId = data.long("mid")?.toString().orEmpty(),
+        avatarUrl = data.str("face"),
+        vip = vipStatus > 0,
+        loginAt = System.currentTimeMillis(),
+    )
+}
+
+/** 从成员信息接口的 data 构造账号信息。 */
+fun biliAccountFromMember(data: JsonObject): AccountInfo? {
+    val nickname = data.str("uname").orEmpty()
+    val mid = data.long("mid")?.toString().orEmpty()
+    if (nickname.isBlank() && mid.isBlank()) return null
+    return AccountInfo(
+        source = MediaSource.BILIBILI.name,
+        nickname = nickname,
+        userId = mid,
+        avatarUrl = data.str("face"),
+        vip = false,
+        loginAt = System.currentTimeMillis(),
+    )
+}
+
+/** 解析哔哩哔哩账号信息：nav → 成员接口 → Cookie 兜底。可离线单测。 */
+fun parseBiliAccount(
+    navText: String?,
+    memberText: String?,
+    cookies: Map<String, String>,
+): AccountInfo? {
+    val navData = navText?.let { NeriJsonParser.parse(it).asObject()?.obj("data") }
+    if (navData?.bool("isLogin") == true) {
+        return biliAccountFromNav(navData)
+    }
+    val memberData = memberText?.let { NeriJsonParser.parse(it).asObject()?.obj("data") }
+    memberData?.let { data -> biliAccountFromMember(data)?.let { return it } }
+    return parseCookieFallbackAccount(
+        source = MediaSource.BILIBILI,
+        cookies = cookies,
+        cookieName = "SESSDATA",
+        userId = cookies["DedeUserID"].orEmpty(),
+    )
+}
+
+/** 账号信息接口不可用时的兜底：登录 Cookie 存在即视为已登录。 */
+fun parseCookieFallbackAccount(
+    source: MediaSource,
+    cookies: Map<String, String>,
+    cookieName: String,
+    userId: String,
+): AccountInfo? {
+    if (cookies[cookieName].orEmpty().isBlank()) return null
+    return AccountInfo(
+        source = source.name,
+        nickname = "",
+        userId = userId,
+        avatarUrl = null,
+        vip = false,
+        loginAt = System.currentTimeMillis(),
+    )
 }

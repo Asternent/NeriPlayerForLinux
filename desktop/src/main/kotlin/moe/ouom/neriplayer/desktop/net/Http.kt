@@ -45,6 +45,18 @@ fun JsonObject.int(key: String): Int? = str(key)?.let { raw ->
     raw.toIntOrNull() ?: raw.toDoubleOrNull()?.toInt()
 }
 
+/**
+ * 读取布尔字段。接口里既有 JSON 布尔（true/false），也有 0/1 数字，这里统一兼容，
+ * 避免把 true 当成解析失败。
+ */
+fun JsonObject.bool(key: String): Boolean? = str(key)?.trim()?.lowercase()?.let { raw ->
+    when (raw) {
+        "true" -> true
+        "false" -> false
+        else -> raw.toIntOrNull()?.let { it != 0 }
+    }
+}
+
 fun JsonObject.double(key: String): Double? = str(key)?.toDoubleOrNull()
 
 fun JsonObject.obj(key: String): JsonObject? = this[key].asObject()

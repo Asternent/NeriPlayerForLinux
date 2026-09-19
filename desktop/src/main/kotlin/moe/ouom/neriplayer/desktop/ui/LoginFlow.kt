@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.core.MediaSource
+import moe.ouom.neriplayer.desktop.core.displayName
 import moe.ouom.neriplayer.desktop.net.LoginPollResult
 
 /** 用 Compose Canvas 绘制二维码，避免额外的图片编码依赖。 */
@@ -167,9 +168,9 @@ fun LoginDialog(
                 is LoginPollResult.Success -> {
                     val jarKey = if (source == MediaSource.NETEASE) "netease" else "bilibili"
                     container.accounts.save(source, result.account, jarKey)
-                    status = "登录成功：${result.account.nickname.ifBlank { result.account.userId }}"
+                    status = "登录成功：${result.account.displayName()}"
                     finished = true
-                    showMessage("已登录${source.displayName}：${result.account.nickname.ifBlank { result.account.userId }}")
+                    showMessage("已登录${source.displayName}：${result.account.displayName()}")
                     delay(900)
                     onDismiss()
                     break

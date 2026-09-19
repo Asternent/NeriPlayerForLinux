@@ -38,8 +38,24 @@ class AppContainer {
         stats.load()
         player.attachSnapshotFlow()
         player.restoreLastQueue()
+        scope.launch(Dispatchers.IO) { refreshAccountProfiles() }
         if (scanLibrary) {
             scope.launch { library.scan() }
         }
+    }
+
+    /**
+     * 登录时若账号信息接口临时失败，会以「只有 Cookie」的形式保存登录态；
+     * 这里在启动时补拉一次昵称与 UID，让界面与「我的歌单」恢复正常。
+     */
+    private fun refreshAccountProfiles() {
+        accounts.accountOf(MediaSource.NETEASE)
+            ?.takeIf { it.nickname.isBlank() || it.userId.isBlank() }
+            ?.let { runCatching { neteaseLogin.fetchProfile() }.getOrNull() }
+            ?.let { accounts.save(MediaSource.NETEASE, it, "netease") }
+        accounts.accountOf(MediaSource.BILIBILI)
+            ?.takeIf { it.nickname.isBlank() || it.userId.isBlank() }
+            ?.let { runCatching { biliLogin.fetchProfile() }.getOrNull() }
+            ?.let { accounts.save(MediaSource.BILIBILI, it, "bilibili") }
     }
 }

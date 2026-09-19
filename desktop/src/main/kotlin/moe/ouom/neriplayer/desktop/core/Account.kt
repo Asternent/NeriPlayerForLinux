@@ -17,6 +17,13 @@ data class AccountInfo(
     val loginAt: Long = 0L,
 )
 
+/** 界面上展示的账号名：昵称缺失时退回 UID，再退回「已登录」。 */
+fun AccountInfo.displayName(): String = when {
+    nickname.isNotBlank() -> nickname
+    userId.isNotBlank() -> "UID $userId"
+    else -> "已登录"
+}
+
 @Serializable
 data class AccountStoreData(
     val accounts: List<AccountInfo> = emptyList(),

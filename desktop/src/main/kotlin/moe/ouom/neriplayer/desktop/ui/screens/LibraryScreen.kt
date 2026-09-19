@@ -137,9 +137,30 @@ fun LibraryScreen(
         if (primaryTab != LibraryPrimaryTab.NETEASE && primaryTab != LibraryPrimaryTab.BILI) return@LaunchedEffect
         onlineLoading = true
         val keyword = query.ifBlank { "热门" }
-        val neteaseUid = container.accounts.accountOf(MediaSource.NETEASE)?.userId.orEmpty()
-        val biliMid = container.accounts.accountOf(MediaSource.BILIBILI)?.userId.orEmpty()
+        var neteaseUid = container.accounts.accountOf(MediaSource.NETEASE)?.userId.orEmpty()
+        var biliMid = container.accounts.accountOf(MediaSource.BILIBILI)?.userId.orEmpty()
         withContext(Dispatchers.IO) {
+            // 兜底登录（只有 Cookie）时会缺 UID，进入对应分栏时补拉一次账号信息
+            if (primaryTab == LibraryPrimaryTab.NETEASE && neteaseUid.isBlank() &&
+                container.accounts.accountOf(MediaSource.NETEASE) != null
+            ) {
+                runCatching { container.neteaseLogin.fetchProfile() }.getOrNull()?.let { info ->
+                    if (info.userId.isNotBlank()) {
+                        container.accounts.save(MediaSource.NETEASE, info, "netease")
+                        neteaseUid = info.userId
+                    }
+                }
+            }
+            if (primaryTab == LibraryPrimaryTab.BILI && biliMid.isBlank() &&
+                container.accounts.accountOf(MediaSource.BILIBILI) != null
+            ) {
+                runCatching { container.biliLogin.fetchProfile() }.getOrNull()?.let { info ->
+                    if (info.userId.isNotBlank()) {
+                        container.accounts.save(MediaSource.BILIBILI, info, "bilibili")
+                        biliMid = info.userId
+                    }
+                }
+            }
             myCollections = when (primaryTab) {
                 LibraryPrimaryTab.NETEASE -> if (neteaseUid.isBlank()) {
                     emptyList()
