@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,6 +62,26 @@ import moe.ouom.neriplayer.desktop.core.PlaybackState
 import moe.ouom.neriplayer.desktop.core.currentLyricIndex
 import java.awt.GraphicsEnvironment
 import kotlin.math.roundToInt
+
+/**
+ * 悬浮歌词窗口句柄：供自动化测试与调试移动窗口，
+ * 真实拖动（鼠标事件）走的是同一套位置计算与回写逻辑。
+ */
+object FloatingLyricsWindowHandle {
+    @Volatile
+    var windowProvider: (() -> java.awt.Window?)? = null
+    @Volatile
+    var dragHandler: ((Float, Float, Float, Float) -> Unit)? = null
+
+    fun position(): Pair<Int, Int>? = windowProvider?.invoke()?.let { it.x to it.y }
+
+    fun isVisible(): Boolean = windowProvider?.invoke()?.isVisible == true
+
+    /** 模拟一次拖动：参数为指针在窗口内的坐标与抓取偏移，与真实拖动使用同一函数。 */
+    fun simulateDrag(pointerLocalX: Float, pointerLocalY: Float, grabOffsetX: Float, grabOffsetY: Float) {
+        dragHandler?.invoke(pointerLocalX, pointerLocalY, grabOffsetX, grabOffsetY)
+    }
+}
 
 /**
  * 悬浮歌词窗口：无边框 + 置顶 + 透明背景，拖动即可调整位置。
@@ -112,28 +133,58 @@ fun FloatingLyricsWindow(
         position = initialPosition,
     )
 
+    // 拖动状态：拖动过程中不覆盖窗口位置，避免与设置回写互相打架
+    var dragging by remember { mutableStateOf(false) }
+    val windowRef = remember { mutableStateOf<java.awt.Window?>(null) }
+
     val densityValue = density.density
-    // 位置：屏幕比例 → 像素（跟随设置即时更新，拖动结束后回写比例）
+    // 尺寸变化（字号 / 最大宽度 / 翻译开关）：只调整窗口大小，保持左上角不动
+    LaunchedEffect(widthDp, heightDp, screenBounds) {
+        val bounds = screenBounds ?: return@LaunchedEffect
+        val targetSize = DpSize(widthDp, heightDp)
+        if (windowState.size != targetSize) {
+            windowState.size = targetSize
+        }
+        val actual = windowRef.value ?: return@LaunchedEffect
+        val maxX = (bounds.width - actual.width).coerceAtLeast(0)
+        val maxY = (bounds.height - actual.height).coerceAtLeast(0)
+        val clampedX = actual.x.coerceIn(0, maxX)
+        val clampedY = actual.y.coerceIn(0, maxY)
+        if (clampedX != actual.x || clampedY != actual.y) {
+            windowState.position = WindowPosition(clampedX.dp, clampedY.dp)
+        }
+    }
+
+    // 位置比例变化（设置页滑块或拖动结束回写）：按比例定位
     LaunchedEffect(
         settings.floatingLyricsPositionX,
         settings.floatingLyricsPositionY,
-        settings.floatingLyricsMaxWidthDp,
-        settings.floatingLyricsFontSize,
-        settings.floatingLyricsShowTranslation,
+        widthDp,
+        heightDp,
         screenBounds,
     ) {
+        if (dragging) return@LaunchedEffect
         val bounds = screenBounds ?: return@LaunchedEffect
-        val widthPx = with(density) { widthDp.roundToPx() }
-        val heightPx = with(density) { heightDp.roundToPx() }
         val (x, y) = resolveFloatingPosition(
             screenWidth = bounds.width,
             screenHeight = bounds.height,
-            windowWidth = widthPx,
-            windowHeight = heightPx,
+            windowWidth = with(density) { widthDp.roundToPx() },
+            windowHeight = with(density) { heightDp.roundToPx() },
             ratioX = settings.floatingLyricsPositionX,
             ratioY = settings.floatingLyricsPositionY,
         )
-        windowState.size = DpSize(widthDp, heightDp)
+        // 拖动结束会把比例写回设置并重新触发这里；若窗口已在目标位置就不要挪动，避免回弹
+        val actual = windowRef.value
+        if (actual != null) {
+            val actualWidth = with(density) { actual.width.toDp().value }
+            if (kotlin.math.abs(actualWidth - widthDp.value) > 1f) {
+                // 尺寸刚变化，左上角已由上面的效果保持，不要再按比例挪动
+                return@LaunchedEffect
+            }
+            if (kotlin.math.abs(actual.x - x) < 2 && kotlin.math.abs(actual.y - y) < 2) {
+                return@LaunchedEffect
+            }
+        }
         windowState.position = WindowPosition(x.dp, y.dp)
     }
 
@@ -159,6 +210,7 @@ fun FloatingLyricsWindow(
         title = "NeriPlayer 悬浮歌词",
         onCloseRequest = onClose,
     ) {
+        LaunchedEffect(Unit) { windowRef.value = window }
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(600)
             println(
@@ -169,35 +221,91 @@ fun FloatingLyricsWindow(
         }
         val interaction = remember { MutableInteractionSource() }
         val hovered by interaction.collectIsHoveredAsState()
+
+        // 供真实拖动与自动化测试复用的位置更新逻辑
+        fun persistCurrentRatio() {
+            val bounds = screenBounds ?: return
+            val (ratioX, ratioY) = resolveFloatingRatio(
+                screenWidth = bounds.width,
+                screenHeight = bounds.height,
+                windowWidth = window.width,
+                windowHeight = window.height,
+                x = window.x,
+                y = window.y,
+            )
+            container.settings.update {
+                it.copy(floatingLyricsPositionX = ratioX, floatingLyricsPositionY = ratioY)
+            }
+        }
+
+        fun applyDrag(
+            pointerLocalX: Float,
+            pointerLocalY: Float,
+            grabOffsetX: Float,
+            grabOffsetY: Float,
+            persistRatio: Boolean,
+        ) {
+            val bounds = screenBounds ?: return
+            val (x, y) = resolveDragPosition(
+                windowX = window.x,
+                windowY = window.y,
+                pointerLocalX = pointerLocalX,
+                pointerLocalY = pointerLocalY,
+                grabOffsetX = grabOffsetX,
+                grabOffsetY = grabOffsetY,
+                screenWidth = bounds.width,
+                screenHeight = bounds.height,
+                windowWidth = window.width,
+                windowHeight = window.height,
+            )
+            window.setLocation(x, y)
+            if (persistRatio) {
+                persistCurrentRatio()
+            }
+        }
+
         val dragModifier = if (settings.floatingLyricsLocked) {
             Modifier
         } else {
             Modifier.pointerInput(settings.floatingLyricsLocked) {
+                var grabOffsetX = 0f
+                var grabOffsetY = 0f
                 detectDragGestures(
-                    onDragEnd = {
-                        val bounds = screenBounds ?: return@detectDragGestures
-                        val (ratioX, ratioY) = resolveFloatingRatio(
-                            screenWidth = bounds.width,
-                            screenHeight = bounds.height,
-                            windowWidth = window.width,
-                            windowHeight = window.height,
-                            x = window.x,
-                            y = window.y,
-                        )
-                        container.settings.update {
-                            it.copy(
-                                floatingLyricsPositionX = ratioX,
-                                floatingLyricsPositionY = ratioY,
-                            )
-                        }
+                    onDragStart = { offset ->
+                        // 记录「指针在窗口内的偏移」，之后窗口始终按这个偏移跟随鼠标
+                        grabOffsetX = offset.x
+                        grabOffsetY = offset.y
+                        dragging = true
                     },
-                ) { change, dragAmount ->
+                    onDragEnd = {
+                        dragging = false
+                        persistCurrentRatio()
+                    },
+                    onDragCancel = { dragging = false },
+                ) { change, _ ->
                     change.consume()
-                    window.setLocation(
-                        window.x + dragAmount.x.roundToInt(),
-                        window.y + dragAmount.y.roundToInt(),
+                    applyDrag(
+                        pointerLocalX = change.position.x,
+                        pointerLocalY = change.position.y,
+                        grabOffsetX = grabOffsetX,
+                        grabOffsetY = grabOffsetY,
+                        persistRatio = false,
                     )
                 }
+            }
+        }
+
+        DisposableEffect(Unit) {
+            FloatingLyricsWindowHandle.windowProvider = { window }
+            FloatingLyricsWindowHandle.dragHandler = { pointerX, pointerY, grabX, grabY ->
+                // 测试/调试入口：等价于按下 → 拖动 → 松开（含比例回写）
+                dragging = true
+                applyDrag(pointerX, pointerY, grabX, grabY, persistRatio = true)
+                dragging = false
+            }
+            onDispose {
+                FloatingLyricsWindowHandle.windowProvider = null
+                FloatingLyricsWindowHandle.dragHandler = null
             }
         }
 

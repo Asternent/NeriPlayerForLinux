@@ -100,7 +100,8 @@ class OnlineRepository(private val http: HttpService = HttpService()) {
             val recommended = netease.searchSongs("热门歌曲", limit = 18)
             val topListId = netease.toplists().firstOrNull { it.name.contains("热歌") }?.id
                 ?: netease.toplists().firstOrNull()?.id
-            val topSongs = topListId?.let { netease.playlistDetail(it)?.second }?.take(18).orEmpty()
+            // 首页只展示前几首：限制抓取数量，避免为榜单歌单拉取全部曲目
+            val topSongs = topListId?.let { netease.playlistDetail(it, limit = 30)?.second }?.take(18).orEmpty()
             val newSongs = netease.recommendedNewSongs(18)
             val radar = netease.recommendedPlaylists(12)
             val hot = netease.toplists().take(12)

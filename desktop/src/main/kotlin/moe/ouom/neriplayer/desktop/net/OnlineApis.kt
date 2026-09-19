@@ -190,7 +190,11 @@ class NeteaseApi(private val http: HttpService) {
         return lyric to translated?.takeIf { it.isNotBlank() }
     }
 
-    fun playlistDetail(id: String): Pair<OnlineCollection, List<Song>>? {
+    /**
+     * 歌单详情。
+     * @param limit 最多返回多少首（首页只展示前几首时传小值以省流量），默认返回完整歌单。
+     */
+    fun playlistDetail(id: String, limit: Int = Int.MAX_VALUE): Pair<OnlineCollection, List<Song>>? {
         val root = getJson("/api/v6/playlist/detail?id=$id") ?: return null
         val playlist = root.obj("playlist") ?: return null
         val collection = OnlineCollection(
@@ -204,7 +208,33 @@ class NeteaseApi(private val http: HttpService) {
             description = playlist.str("description").orEmpty(),
         )
         val tracks = playlist.array("tracks")?.objects().orEmpty().mapNotNull { songFromJson(JsonObjectSelf(it)) }
-        return collection to tracks
+        // 详情接口只返回前若干首（热歌榜 200 首只回 10 首），完整列表在 trackIds 里，
+        // 缺的部分按 trackIds 顺序用歌曲详情接口补齐，否则歌单会「只显示 10 首」。
+        val trackIds = playlist.array("trackIds")?.objects().orEmpty().mapNotNull { item ->
+            item.long("id")?.takeIf { it != 0L }
+        }
+        val wantedIds = trackIds.take(limit)
+        val songs = when {
+            wantedIds.isEmpty() -> tracks.take(limit)
+            wantedIds.size > tracks.size -> fetchSongsByIds(wantedIds)
+            else -> tracks.take(limit)
+        }
+        return collection to songs
+    }
+
+    /** 按 id 批量拉取歌曲详情，保持传入顺序；单次请求最多 200 首以控制 URL 长度。 */
+    private fun fetchSongsByIds(ids: List<Long>): List<Song> {
+        if (ids.isEmpty()) return emptyList()
+        val byId = LinkedHashMap<Long, Song>()
+        for (chunk in ids.chunked(200)) {
+            val path = "/api/song/detail?ids=%5B${chunk.joinToString(",")}%5D"
+            val root = getJson(path) ?: continue
+            for (item in root.array("songs")?.objects().orEmpty()) {
+                val songId = item.long("id") ?: continue
+                songFromJson(JsonObjectSelf(item))?.let { song -> byId[songId] = song }
+            }
+        }
+        return ids.mapNotNull { byId[it] }
     }
 
     fun albumDetail(id: String): Pair<OnlineCollection, List<Song>>? {

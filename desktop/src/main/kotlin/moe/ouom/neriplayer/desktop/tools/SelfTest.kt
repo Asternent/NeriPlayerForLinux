@@ -114,6 +114,20 @@ fun main() = runBlocking {
         }
     }
 
+    // 5. 在线歌单完整性：详情接口只返回前若干首，必须按 trackIds 补齐
+    val hotList = online.netease.playlistDetail("3778678")
+    val hotCount = hotList?.second?.size ?: 0
+    val declared = hotList?.first?.trackCount ?: 0
+    check(
+        "netease-playlist-full",
+        hotCount >= 100,
+        "热歌榜声明 $declared 首，实际取回 $hotCount 首",
+    )
+    check(
+        "netease-playlist-limited",
+        (online.netease.playlistDetail("3778678", limit = 5)?.second?.size ?: 0) == 5,
+    )
+
     // 3. 生成测试音频并播放
     val tone = File(AppDirs.cacheDir, "selftest-tone.wav")
     val ffmpeg = ProcessBuilder(
@@ -225,6 +239,45 @@ private fun checkFloatingLyrics() {
         heightWithTranslation > heightWithoutTranslation && heightWithoutTranslation >= 64f,
         "with=$heightWithTranslation without=$heightWithoutTranslation",
     )
+
+    // 拖动跟随：窗口必须与鼠标保持固定相对位置（旧实现用窗口内增量累加会越拖越偏）
+    val grabX = 100f
+    val grabY = 40f
+    val (sameX, sameY) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
+        windowX = 300, windowY = 710,
+        pointerLocalX = grabX, pointerLocalY = grabY,
+        grabOffsetX = grabX, grabOffsetY = grabY,
+        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
+    )
+    check("floating-drag-no-jump", sameX == 300 && sameY == 710, "x=$sameX y=$sameY")
+
+    // 鼠标屏幕坐标右移 50（窗口尚未移动，本地坐标变为 150）
+    val (stepOneX, _) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
+        windowX = 300, windowY = 710,
+        pointerLocalX = grabX + 50f, pointerLocalY = grabY,
+        grabOffsetX = grabX, grabOffsetY = grabY,
+        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
+    )
+    check("floating-drag-follow-1", stepOneX == 350, "x=$stepOneX")
+
+    // 窗口已跟随到 350 后再右移 50：本地坐标重新变成 150（因为窗口跟着动了），
+    // 目标位置应为 400 而不是旧实现里 350 + 50 的重复叠加
+    val (stepTwoX, _) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
+        windowX = 350, windowY = 710,
+        pointerLocalX = grabX + 50f, pointerLocalY = grabY,
+        grabOffsetX = grabX, grabOffsetY = grabY,
+        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
+    )
+    check("floating-drag-follow-2", stepTwoX == 400, "x=$stepTwoX")
+
+    // 拖到屏幕外会被夹回屏幕内
+    val (clampedDragX, clampedDragY) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
+        windowX = 300, windowY = 710,
+        pointerLocalX = 5000f, pointerLocalY = 5000f,
+        grabOffsetX = grabX, grabOffsetY = grabY,
+        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
+    )
+    check("floating-drag-clamped", clampedDragX == 600 && clampedDragY == 866, "x=$clampedDragX y=$clampedDragY")
 }
 
 /** 同步通道序列化与合并策略的离线自检。 */

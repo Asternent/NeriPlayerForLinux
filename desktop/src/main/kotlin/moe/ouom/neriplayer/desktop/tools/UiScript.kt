@@ -270,6 +270,47 @@ suspend fun runUiScript(
                 }
                 host.log("floating-config applied: ${command.argument}")
             }
+            "floating-drag" -> {
+                // 形如 floating-drag:150,240 → 目标窗口位置（屏幕坐标），模拟「按下-拖动-松开」并回写比例
+                val parts = command.argument.split(',').map { it.trim().toFloatOrNull() }
+                if (parts.size >= 2 && parts[0] != null && parts[1] != null) {
+                    val handle = moe.ouom.neriplayer.desktop.ui.FloatingLyricsWindowHandle
+                    val before = handle.position()
+                    // 抓取点固定为窗口左上角(0,0)，因此指针的窗口内坐标 = 目标位置 - 当前窗口位置
+                    val targetX = parts[0]!!
+                    val targetY = parts[1]!!
+                    val current = before ?: (0 to 0)
+                    handle.simulateDrag(
+                        pointerLocalX = targetX - current.first,
+                        pointerLocalY = targetY - current.second,
+                        grabOffsetX = 0f,
+                        grabOffsetY = 0f,
+                    )
+                    delay(400)
+                    val after = handle.position()
+                    host.log("floating-drag 目标=($targetX, $targetY) 之前=$before 之后=$after")
+                } else {
+                    host.log("FAIL floating-drag 参数无法解析：${command.argument}")
+                    ok = false
+                }
+            }
+            "floating-position" -> {
+                val handle = moe.ouom.neriplayer.desktop.ui.FloatingLyricsWindowHandle
+                host.log("floating-position ${handle.position()} 可见=${handle.isVisible()}")
+            }
+            "expect-floating-position" -> {
+                val parts = command.argument.split(',').map { it.trim().toIntOrNull() }
+                val actual = moe.ouom.neriplayer.desktop.ui.FloatingLyricsWindowHandle.position()
+                if (parts.size >= 2 && actual != null &&
+                    kotlin.math.abs(actual.first - (parts[0] ?: -1)) <= 1 &&
+                    kotlin.math.abs(actual.second - (parts[1] ?: -1)) <= 1
+                ) {
+                    host.log("PASS expect-floating-position 实际=$actual")
+                } else {
+                    host.log("FAIL expect-floating-position 期望=${command.argument} 实际=$actual")
+                    ok = false
+                }
+            }
             "bili-debug" -> {
                 val info = kotlinx.coroutines.runBlocking {
                     runCatching { container.online.bilibili.debugSearch(command.argument.ifBlank { "音乐" }) }

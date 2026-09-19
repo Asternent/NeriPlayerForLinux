@@ -93,6 +93,35 @@ fun resolveFloatingRatio(
     return ratioX to ratioY
 }
 
+/**
+ * 拖动时的窗口位置计算。
+ *
+ * Compose 的拖动增量是「窗口内坐标」的增量，而窗口本身正在移动，两者会互相抵消，
+ * 直接用增量累加会出现「越拖越慢 / 抖动 / 跟不上鼠标」。这里改成用抓取点跟随：
+ * 指针的屏幕位置 = 窗口位置 + 窗口内坐标，窗口目标位置 = 指针屏幕位置 - 抓取偏移，
+ * 因此窗口与鼠标的相对位置始终不变，拖动既精确又平滑。
+ */
+fun resolveDragPosition(
+    windowX: Int,
+    windowY: Int,
+    pointerLocalX: Float,
+    pointerLocalY: Float,
+    grabOffsetX: Float,
+    grabOffsetY: Float,
+    screenWidth: Int,
+    screenHeight: Int,
+    windowWidth: Int,
+    windowHeight: Int,
+): Pair<Int, Int> {
+    val pointerScreenX = windowX + pointerLocalX
+    val pointerScreenY = windowY + pointerLocalY
+    val targetX = (pointerScreenX - grabOffsetX).roundToInt()
+    val targetY = (pointerScreenY - grabOffsetY).roundToInt()
+    val maxX = (screenWidth - windowWidth).coerceAtLeast(0)
+    val maxY = (screenHeight - windowHeight).coerceAtLeast(0)
+    return targetX.coerceIn(0, maxX) to targetY.coerceIn(0, maxY)
+}
+
 /** 悬浮窗高度：主歌词 + 可选翻译 + 内边距。 */
 fun floatingWindowHeightDp(settings: AppSettings): Float {
     val lineHeight = settings.floatingLyricsFontSize * 1.6f
