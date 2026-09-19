@@ -68,5 +68,7 @@ tasks.register<JavaExec>("syncE2E") {
     description = "GitHub 同步端到端测试"
     mainClass.set("moe.ouom.neriplayer.desktop.tools.SyncE2ETestKt")
     classpath = sourceSets["main"].runtimeClasspath
-    environment("GH_TOKEN", System.getenv("GH_TOKEN") ?: "")
+    // 支持 -DGH_TOKEN=xxx（推荐，避免 Gradle 守护进程环境变量过期）
+    environment("GH_TOKEN", System.getProperty("GH_TOKEN") ?: System.getenv("GH_TOKEN") ?: "")
+    environment("GH_MOCK_BASE", System.getProperty("GH_MOCK_BASE") ?: System.getenv("GH_MOCK_BASE") ?: "")
 }

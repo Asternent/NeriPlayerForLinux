@@ -222,9 +222,25 @@ class HttpService {
         }
         val response = client.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
         storeCookies(host, response)
+        val raw = response.body() ?: ByteArray(0)
+        // 声明了 Accept-Encoding: gzip，就必须自行解压，否则 JSON 会解析失败
+        val bytes = if (
+            response.headers().firstValue("Content-Encoding").orElse("").contains("gzip") &&
+            raw.size > 2 && raw[0] == 0x1F.toByte() && raw[1] == 0x8B.toByte()
+        ) {
+            runCatching {
+                GZIPInputStream(raw.inputStream()).use { stream ->
+                    val out = ByteArrayOutputStream()
+                    stream.copyTo(out)
+                    out.toByteArray()
+                }
+            }.getOrDefault(raw)
+        } else {
+            raw
+        }
         RawResponse(
             status = response.statusCode(),
-            bytes = response.body() ?: ByteArray(0),
+            bytes = bytes,
             header = { name -> response.headers().firstValue(name).orElse(null) },
         )
     }.getOrNull()

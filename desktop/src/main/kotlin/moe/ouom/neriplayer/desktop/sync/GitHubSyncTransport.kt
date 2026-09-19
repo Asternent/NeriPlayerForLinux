@@ -44,8 +44,15 @@ class GitHubSyncTransport(
     private fun api(path: String): String = "${apiBase.trimEnd('/')}/$path"
 
     fun currentUser(): String? {
-        val response = http.execute("GET", api("user"), headers = headers()) ?: return null
-        if (response.status != 200) return null
+        val response = http.execute("GET", api("user"), headers = headers())
+        if (response == null) {
+            println("[sync] 无法访问 ${api("user")}（网络或 TLS 失败）")
+            return null
+        }
+        if (response.status != 200) {
+            println("[sync] ${api("user")} 返回 HTTP ${response.status}：${response.text().take(200)}")
+            return null
+        }
         return NeriJsonParser.parse(response.text()).asObject()?.str("login")
     }
 
