@@ -1,0 +1,82 @@
+package moe.ouom.neriplayer.desktop
+
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import moe.ouom.neriplayer.desktop.core.AppContainer
+import moe.ouom.neriplayer.desktop.ui.NeriApp
+
+fun main() {
+    val container = AppContainer()
+    container.bootstrap()
+    application {
+        val windowState = rememberWindowState(
+            size = DpSize(1180.dp, 820.dp),
+            position = WindowPosition(Alignment.Center),
+        )
+        Window(
+            onCloseRequest = {
+                container.player.persistQueueState()
+                exitApplication()
+            },
+            state = windowState,
+            title = "音理音理!! · NeriPlayer",
+            onKeyEvent = { event -> handleShortcut(event, container) },
+        ) {
+            NeriApp(container)
+        }
+    }
+}
+
+private fun handleShortcut(event: KeyEvent, container: AppContainer): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    val player = container.player
+    return when {
+        event.key == Key.Spacebar -> {
+            player.togglePlayPause()
+            true
+        }
+
+        event.isCtrlPressed && event.key == Key.DirectionRight -> {
+            player.next()
+            true
+        }
+
+        event.isCtrlPressed && event.key == Key.DirectionLeft -> {
+            player.previous()
+            true
+        }
+
+        event.key == Key.DirectionRight -> {
+            player.seekTo(player.positionMs.value + 5_000L)
+            true
+        }
+
+        event.key == Key.DirectionLeft -> {
+            player.seekTo(player.positionMs.value - 5_000L)
+            true
+        }
+
+        event.key == Key.DirectionUp -> {
+            player.setVolume(player.volume.value + 0.05f)
+            true
+        }
+
+        event.key == Key.DirectionDown -> {
+            player.setVolume(player.volume.value - 0.05f)
+            true
+        }
+
+        else -> false
+    }
+}
