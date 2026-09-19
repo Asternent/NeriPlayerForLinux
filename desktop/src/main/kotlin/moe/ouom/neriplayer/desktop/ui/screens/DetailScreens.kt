@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +63,8 @@ import moe.ouom.neriplayer.desktop.ui.RemoteArtwork
 import moe.ouom.neriplayer.desktop.ui.SectionHeader
 import moe.ouom.neriplayer.desktop.ui.SongArtwork
 import moe.ouom.neriplayer.desktop.ui.SongRow
+import moe.ouom.neriplayer.desktop.ui.currentSongIndex
+import moe.ouom.neriplayer.desktop.ui.rememberListLocator
 import moe.ouom.neriplayer.desktop.ui.formatDuration
 import moe.ouom.neriplayer.desktop.ui.formatLongDuration
 import moe.ouom.neriplayer.desktop.ui.formatPlayCount
@@ -89,6 +94,20 @@ fun DetailScaffold(
     }
 }
 
+/** 「定位到正在播放」按钮（图标 + 悬浮提示）。 */
+@Composable
+fun LocateCurrentButton(onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Box {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = Icons.Outlined.MyLocation,
+                contentDescription = "定位到正在播放",
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
 @Composable
 fun CollectionHeader(
     name: String,
@@ -96,6 +115,7 @@ fun CollectionHeader(
     cover: @Composable () -> Unit,
     onPlayAll: () -> Unit,
     onShuffle: (() -> Unit)? = null,
+    onDownloadAll: (() -> Unit)? = null,
     extra: @Composable () -> Unit = {},
 ) {
     Row(
@@ -134,6 +154,13 @@ fun CollectionHeader(
                         Text("随机播放")
                     }
                 }
+                if (onDownloadAll != null) {
+                    TextButton(onClick = onDownloadAll) {
+                        Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("下载全部")
+                    }
+                }
                 extra()
             }
         }
@@ -148,9 +175,13 @@ fun LocalPlaylistDetailScreen(
     showMessage: (String) -> Unit,
 ) {
     val playlists by container.playlists.playlists.collectAsState()
+    val currentSong by container.player.currentSong.collectAsState()
+    val playbackState by container.player.state.collectAsState()
     val playlist = playlists.firstOrNull { it.id == playlistId }
     var actionSong by remember { mutableStateOf<Song?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val locator = rememberListLocator(listState)
 
     if (playlist == null) {
         DetailScaffold(title = "歌单", onBack = onBack) {
@@ -164,6 +195,16 @@ fun LocalPlaylistDetailScreen(
         title = playlist.name,
         onBack = onBack,
         actions = {
+            LocateCurrentButton(
+                onClick = {
+                    val index = currentSongIndex(songs, currentSong)
+                    if (index < 0) {
+                        showMessage("当前歌曲不在该列表中")
+                    } else {
+                        locator.locate(index, currentSong?.key)
+                    }
+                },
+            )
             if (!playlist.system) {
                 IconButton(onClick = { showDeleteConfirm = true }) {
                     Icon(Icons.Outlined.Delete, contentDescription = "删除歌单")
@@ -171,7 +212,11 @@ fun LocalPlaylistDetailScreen(
             }
         },
     ) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 24.dp),
+        ) {
             item {
                 CollectionHeader(
                     name = playlist.name,
@@ -184,6 +229,9 @@ fun LocalPlaylistDetailScreen(
                     onShuffle = {
                         if (songs.isNotEmpty()) container.player.setQueue(songs.shuffled(), 0, autoPlay = true)
                     },
+                    onDownloadAll = {
+                        if (songs.isNotEmpty()) container.downloads.enqueue(songs, showMessage)
+                    },
                 )
             }
             if (songs.isEmpty()) {
@@ -195,12 +243,16 @@ fun LocalPlaylistDetailScreen(
                 }
             }
             itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
-                SongRow(
-                    song = song,
-                    index = index,
-                    onClick = { container.player.playSongNow(song, songs) },
-                    onMore = { actionSong = song },
-                )
+                    SongRow(
+                        song = song,
+                        index = index,
+                        onClick = { container.player.playSongNow(song, songs) },
+                        onMore = { actionSong = song },
+                        isCurrent = song.key == currentSong?.key,
+                        isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
+                        highlightPulse = locator.pulsedSongKey == song.key,
+                        isDownloaded = container.downloadCatalog.contains(song.key),
+                    )
             }
         }
     }
@@ -304,6 +356,18 @@ fun SongActionsDialog(
                     val added = container.playlists.toggleFavorite(song)
                     showMessage(if (added) "已收藏" else "已取消收藏")
                     onDismiss()
+                }
+                if (container.downloadCatalog.contains(song.key)) {
+                    ActionEntry("删除本地下载") {
+                        container.downloads.deleteDownload(song.key)
+                        showMessage("已删除下载：${song.displayName()}")
+                        onDismiss()
+                    }
+                } else if (song.source != moe.ouom.neriplayer.desktop.core.MediaSource.LOCAL) {
+                    ActionEntry("下载到本地") {
+                        container.downloads.enqueue(listOf(song), showMessage)
+                        onDismiss()
+                    }
                 }
                 if (onRemoveFromPlaylist != null) {
                     ActionEntry("从歌单移除") {
@@ -411,6 +475,10 @@ fun OnlineCollectionDetailScreen(
     // 收藏夹这类需要翻页的集合：边加载边展示，并显示进度
     val partialFlow = remember(collection.id) { kotlinx.coroutines.flow.MutableStateFlow<List<Song>>(emptyList()) }
     val partialSongs by partialFlow.collectAsState()
+    val currentSong by container.player.currentSong.collectAsState()
+    val playbackState by container.player.state.collectAsState()
+    val listState = rememberLazyListState()
+    val locator = rememberListLocator(listState)
 
     LaunchedEffect(collection.id, reloadToken) {
         loading = true
@@ -429,7 +497,22 @@ fun OnlineCollectionDetailScreen(
 
     val displayedSongs = if (songs.isNotEmpty()) songs else partialSongs
 
-    DetailScaffold(title = collection.name, onBack = onBack) {
+    DetailScaffold(
+        title = collection.name,
+        onBack = onBack,
+        actions = {
+            LocateCurrentButton(
+                onClick = {
+                    val index = currentSongIndex(displayedSongs, currentSong)
+                    if (index < 0) {
+                        showMessage("当前歌曲不在该列表中")
+                    } else {
+                        locator.locate(index, currentSong?.key)
+                    }
+                },
+            )
+        },
+    ) {
         when {
             // 翻页加载时先展示已取回的部分，只有还没有任何数据时才显示转圈
             loading && displayedSongs.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -438,7 +521,11 @@ fun OnlineCollectionDetailScreen(
 
             error != null -> ErrorCard(message = "加载失败：$error", onRetry = { reloadToken += 1 })
 
-            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            else -> LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
                 item {
                     CollectionHeader(
                         name = collection.name,
@@ -487,6 +574,10 @@ fun OnlineCollectionDetailScreen(
                         index = index,
                         onClick = { container.player.playSongNow(song, displayedSongs) },
                         onMore = { actionSong = song },
+                        isCurrent = song.key == currentSong?.key,
+                        isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
+                        highlightPulse = locator.pulsedSongKey == song.key,
+                        isDownloaded = container.downloadCatalog.contains(song.key),
                     )
                 }
             }

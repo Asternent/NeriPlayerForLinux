@@ -80,6 +80,8 @@ fun HomeScreen(
     val historyEntries by container.history.entries.collectAsState()
     val library by container.library.songs.collectAsState()
     val playlists by container.playlists.playlists.collectAsState()
+    val currentSong by container.player.currentSong.collectAsState()
+    val playbackState by container.player.state.collectAsState()
     val title = remember { BRAND_TITLES[Random.nextInt(BRAND_TITLES.size)] }
     val topBarState = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var neteaseData by remember { mutableStateOf<NeteaseHomeData?>(null) }
@@ -163,6 +165,8 @@ fun HomeScreen(
                 item {
                     SongListCard(
                         songs = favoriteSongs.take(6),
+                        currentSong = currentSong,
+                        isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
                         onPlay = { song -> container.player.playSongNow(song, favoriteSongs) },
                     )
                 }
@@ -186,6 +190,8 @@ fun HomeScreen(
                     item {
                         SongListCard(
                             songs = data!!.recommendedSongs.take(6),
+                            currentSong = currentSong,
+                            isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
                             onPlay = { song -> container.player.playSongNow(song, data!!.recommendedSongs) },
                         )
                     }
@@ -195,6 +201,8 @@ fun HomeScreen(
                     item {
                         SongListCard(
                             songs = data!!.topSongs.take(6),
+                            currentSong = currentSong,
+                            isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
                             onPlay = { song -> container.player.playSongNow(song, data!!.topSongs) },
                         )
                     }
@@ -204,6 +212,8 @@ fun HomeScreen(
                     item {
                         SongListCard(
                             songs = data!!.newSongs.take(6),
+                            currentSong = currentSong,
+                            isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
                             onPlay = { song -> container.player.playSongNow(song, data!!.newSongs) },
                         )
                     }
@@ -241,6 +251,8 @@ fun HomeScreen(
                 item {
                     SongListCard(
                         songs = mostPlayedLocal.take(6),
+                        currentSong = currentSong,
+                        isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
                         onPlay = { song -> container.player.playSongNow(song, mostPlayedLocal) },
                     )
                 }
@@ -373,6 +385,8 @@ private fun RecentlyAddedCard(song: Song, onClick: () -> Unit) {
 @Composable
 private fun SongListCard(
     songs: List<Song>,
+    currentSong: Song?,
+    isPlaying: Boolean,
     onPlay: (Song) -> Unit,
 ) {
     Surface(
@@ -386,6 +400,8 @@ private fun SongListCard(
                     song = song,
                     index = index,
                     onClick = { onPlay(song) },
+                    isCurrent = song.key == currentSong?.key,
+                    isPlaying = isPlaying,
                 )
             }
         }

@@ -353,6 +353,8 @@ private fun SearchResults(
     onOpenRemoteArtist: (OnlineArtist) -> Unit,
     showMessage: (String) -> Unit,
 ) {
+    val currentSong by container.player.currentSong.collectAsState()
+    val playbackState by container.player.state.collectAsState()
     val empty = payload.songs.isEmpty() && payload.collections.isEmpty() && payload.artists.isEmpty()
     if (empty) {
         EmptyState(title = "无搜索结果", hint = "尝试使用其他关键词搜索")
@@ -366,6 +368,8 @@ private fun SearchResults(
                     song = song,
                     index = index,
                     onClick = { container.player.playSongNow(song, payload.songs) },
+                    isCurrent = song.key == currentSong?.key,
+                    isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
                     trailing = {
                         TextButton(onClick = { container.player.enqueueNext(listOf(song)) }) { Text("下一首") }
                     },

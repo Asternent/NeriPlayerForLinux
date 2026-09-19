@@ -348,14 +348,43 @@ fun QueuePanel(
                 modifier = Modifier.weight(1f),
             )
         } else {
+            // 与手机端一致：打开队列时自动定位到正在播放，切换歌曲后也会跟随
+            val listState = rememberLazyListState(
+                initialFirstVisibleItemIndex = currentIndex.coerceIn(0, queue.lastIndex)
+            )
+            val locator = rememberListLocator(listState)
+            LaunchedEffect(currentIndex, queue.size) {
+                if (currentIndex in queue.indices) {
+                    listState.animateScrollToItem(currentIndex)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (currentIndex in queue.indices) "正在播放：第 ${currentIndex + 1} 首" else "未在播放",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = { locator.locate(currentIndex, queue.getOrNull(currentIndex)?.key) },
+                ) { Text("定位到正在播放") }
+            }
             Box(Modifier.weight(1f)) {
-                LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp)) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp),
+                ) {
                     itemsIndexed(queue, key = { index, song -> "$index:${song.key}" }) { index, song ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (index == currentIndex) {
+                                    if (locator.pulsedSongKey == song.key) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                    } else if (index == currentIndex) {
                                         MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                                     } else {
                                         Color.Transparent
@@ -365,16 +394,17 @@ fun QueuePanel(
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = (index + 1).toString(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (index == currentIndex) {
-                                    MaterialTheme.colorScheme.primary
+                            Box(Modifier.width(26.dp), contentAlignment = Alignment.Center) {
+                                if (index == currentIndex) {
+                                    PlayingIndicator(isPlaying = true, modifier = Modifier.size(14.dp))
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.width(26.dp),
-                            )
+                                    Text(
+                                        text = (index + 1).toString(),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     text = song.displayName(),

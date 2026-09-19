@@ -8,6 +8,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import java.io.ByteArrayOutputStream
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -244,6 +247,46 @@ class HttpService {
             header = { name -> response.headers().firstValue(name).orElse(null) },
         )
     }.getOrNull()
+
+    /**
+     * 流式下载到文件：边下边写盘并回报进度，避免整首歌驻留内存。
+     * @return 成功返回 true；失败时删除半成品文件
+     */
+    fun downloadToFile(
+        url: String,
+        headers: Map<String, String>,
+        target: File,
+        onProgress: (downloaded: Long, total: Long) -> Unit,
+    ): Boolean {
+        return runCatching {
+            val host = runCatching { URI(url).host }.getOrNull().orEmpty()
+            val builder = HttpRequest.newBuilder(URI(url))
+                .timeout(Duration.ofMinutes(30))
+                .header("User-Agent", DESKTOP_USER_AGENT)
+            headers.forEach { (key, value) -> builder.header(key, value) }
+            cookieHeaderFor(host)?.let { builder.header("Cookie", it) }
+            val response = client.send(builder.GET().build(), HttpResponse.BodyHandlers.ofInputStream())
+            if (response.statusCode() !in 200..299) return@runCatching false
+            val total = response.headers().firstValueAsLong("Content-Length").orElse(-1L)
+            target.parentFile?.mkdirs()
+            var downloaded = 0L
+            BufferedInputStream(response.body()).use { input ->
+                BufferedOutputStream(target.outputStream()).use { output ->
+                    val buffer = ByteArray(1 shl 16)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        downloaded += read
+                        onProgress(downloaded, total)
+                    }
+                }
+            }
+            downloaded > 0
+        }.getOrElse { false }.also { success ->
+            if (!success) runCatching { target.delete() }
+        }
+    }
 }
 
 fun urlEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)

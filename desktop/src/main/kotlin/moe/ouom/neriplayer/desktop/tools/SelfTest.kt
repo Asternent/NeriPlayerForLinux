@@ -11,6 +11,7 @@ import moe.ouom.neriplayer.desktop.core.createAudioEngine
 import moe.ouom.neriplayer.desktop.core.displayName
 import moe.ouom.neriplayer.desktop.net.OnlineRepository
 import moe.ouom.neriplayer.desktop.net.asObject
+import kotlinx.coroutines.cancelChildren
 import java.io.File
 
 private fun log(message: String) = println("[selftest] $message")
@@ -194,8 +195,122 @@ fun main() = runBlocking {
     checkSyncSerializerAndMerge()
     log("--- 悬浮歌词自检 ---")
     checkFloatingLyrics()
+    log("--- 定位到正在播放自检 ---")
+    checkLocateCurrent()
+    log("--- 下载自检 ---")
+    checkDownloads(online)
     log("累计失败项：$checksFailed")
     log("DONE")
+}
+
+/** 下载：文件名清理、记录读写，以及一次真实的在线歌曲下载。 */
+private suspend fun checkDownloads(online: moe.ouom.neriplayer.desktop.net.OnlineRepository) {
+    check(
+        "download-sanitize-illegal",
+        moe.ouom.neriplayer.desktop.core.sanitizeFileName("a/b:c*d?e\"f<g>h|i") == "a_b_c_d_e_f_g_h_i",
+        moe.ouom.neriplayer.desktop.core.sanitizeFileName("a/b:c*d?e\"f<g>h|i"),
+    )
+    check(
+        "download-sanitize-blank",
+        moe.ouom.neriplayer.desktop.core.sanitizeFileName("   ") == "unknown",
+    )
+    check(
+        "download-sanitize-length",
+        moe.ouom.neriplayer.desktop.core.sanitizeFileName("x".repeat(300)).length == 120,
+    )
+    check(
+        "download-sanitize-spaces",
+        moe.ouom.neriplayer.desktop.core.sanitizeFileName("周杰伦   晴天 ") == "周杰伦 晴天",
+    )
+
+    // 真实下载：搜索一首在线歌曲 → 下载到临时目录 → 校验文件与记录
+    val tempDir = kotlin.io.path.createTempDirectory("neri-download-test").toFile()
+    val catalogFile = java.io.File(tempDir, "downloads.json")
+    val catalog = moe.ouom.neriplayer.desktop.core.DownloadCatalog(catalogFile)
+    val settingsRepo = moe.ouom.neriplayer.desktop.core.SettingsRepository()
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+    val manager = moe.ouom.neriplayer.desktop.core.DownloadManager(
+        online = online,
+        settings = settingsRepo,
+        catalog = catalog,
+        scope = scope,
+        directoryOverride = tempDir,
+    )
+    val candidates = online.search(
+        moe.ouom.neriplayer.desktop.core.MediaSource.NETEASE,
+        moe.ouom.neriplayer.desktop.core.SearchKind.SONG,
+        "晴天 周杰伦",
+    ).songs
+    val target = candidates.firstOrNull()
+    if (target == null) {
+        check("download-real-file", false, "搜索不到可用歌曲")
+    } else {
+        val queued = manager.enqueue(listOf(target))
+        check("download-enqueue", queued == 1, "queued=$queued")
+        val deadline = System.currentTimeMillis() + 90_000
+        while (System.currentTimeMillis() < deadline && catalog.items.value[target.key] == null) {
+            kotlinx.coroutines.delay(500)
+        }
+        val entry = catalog.items.value[target.key]
+        val file = entry?.let { java.io.File(it.filePath) }
+        check(
+            "download-real-file",
+            file != null && file.isFile && file.length() > 0L,
+            "file=${file?.absolutePath} size=${file?.length()}",
+        )
+        check(
+            "download-file-name",
+            file != null && file.name.contains("晴天") && file.extension == "mp3",
+            "name=${file?.name}",
+        )
+        check(
+            "download-catalog-persist",
+            runCatching {
+                val reloaded = moe.ouom.neriplayer.desktop.core.DownloadCatalog(catalogFile)
+                reloaded.load()
+                reloaded.contains(target.key)
+            }.getOrDefault(false),
+        )
+        check(
+            "download-enqueue-dedupe",
+            manager.enqueue(listOf(target)) == 0,
+            "重复入队应被跳过",
+        )
+    }
+    scope.coroutineContext.cancelChildren()
+    tempDir.deleteRecursively()
+}
+
+/** 「定位到正在播放」的下标计算。 */
+private fun checkLocateCurrent() {
+    val songs = listOf(
+        moe.ouom.neriplayer.desktop.core.Song(key = "local:/a.mp3", title = "A"),
+        moe.ouom.neriplayer.desktop.core.Song(key = "local:/b.mp3", title = "B"),
+        moe.ouom.neriplayer.desktop.core.Song(key = "net:1", title = "C"),
+    )
+    check(
+        "locate-found-middle",
+        moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, songs[1]) == 1,
+    )
+    check(
+        "locate-found-last",
+        moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, songs[2]) == 2,
+    )
+    check(
+        "locate-not-in-list",
+        moe.ouom.neriplayer.desktop.ui.currentSongIndex(
+            songs,
+            moe.ouom.neriplayer.desktop.core.Song(key = "local:/x.mp3"),
+        ) == -1,
+    )
+    check(
+        "locate-no-current",
+        moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, null) == -1,
+    )
+    check(
+        "locate-empty-list",
+        moe.ouom.neriplayer.desktop.ui.currentSongIndex(emptyList(), songs[0]) == -1,
+    )
 }
 
 /** 悬浮歌词的颜色解析、位置换算与尺寸计算。 */

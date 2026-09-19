@@ -37,6 +37,7 @@ class PlayerManager(
     private val lyricsRepository: LyricsRepository,
     private val online: OnlineRepository,
     private val scope: CoroutineScope,
+    private val downloads: DownloadCatalog,
 ) {
 
     val engine: AudioEngine = createAudioEngine()
@@ -441,6 +442,10 @@ class PlayerManager(
     }
 
     private suspend fun resolveInput(song: Song): AudioInput? = resolveMutex.withLock {
+        // 已下载的歌曲优先走本地文件，未联网也能播放
+        downloads.fileFor(song.key)?.let { file ->
+            return@withLock AudioInput(path = file.absolutePath)
+        }
         resolvedCache[song.key]?.let { cached ->
             if (song.source == MediaSource.LOCAL) {
                 val path = cached.path

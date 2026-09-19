@@ -36,6 +36,10 @@ interface UiScriptHost {
     fun goBack()
     fun setOverlay(name: String?)
     fun showMessage(message: String)
+    /** 请求界面执行一次「定位到正在播放」：滚动到指定下标并闪烁。 */
+    fun setLocateRequest(index: Int, songKey: String?)
+    /** 打开下载管理面板。 */
+    fun openDownloadPanel()
     fun log(message: String)
 }
 
@@ -299,6 +303,66 @@ suspend fun runUiScript(
             "floating-position" -> {
                 val handle = moe.ouom.neriplayer.desktop.ui.FloatingLyricsWindowHandle
                 host.log("floating-position ${handle.position()} 可见=${handle.isVisible()}")
+            }
+            "locate-check" -> {
+                val songs = container.library.songs.value
+                val current = container.player.currentSong.value
+                val index = moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, current)
+                when {
+                    current == null -> host.log("locate-check 当前没有播放歌曲")
+                    index < 0 -> {
+                        host.log("FAIL locate-check：当前歌曲 ${current.displayName()} 不在库列表中")
+                        ok = false
+                    }
+
+                    else -> host.log("locate-check 当前歌曲在库列表第 ${index + 1} 首：${current.displayName()}")
+                }
+            }
+            "locate-current" -> {
+                host.selectTab("library")
+                val songs = container.library.songs.value
+                val current = container.player.currentSong.value
+                val index = moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, current)
+                if (index < 0) {
+                    host.log("FAIL locate-current：当前歌曲不在库列表中")
+                    ok = false
+                } else {
+                    host.setLocateRequest(index, current?.key)
+                    host.log("locate-current 请求定位到第 ${index + 1} 首：${current?.displayName()}")
+                }
+            }
+            "downloads-panel" -> host.openDownloadPanel()
+            "download-current" -> {
+                val song = container.player.currentSong.value
+                if (song == null) {
+                    host.log("FAIL download-current：当前没有播放歌曲")
+                    ok = false
+                } else if (song.source == moe.ouom.neriplayer.desktop.core.MediaSource.LOCAL) {
+                    host.log("download-current 当前是本地歌曲，跳过下载")
+                } else {
+                    container.downloads.enqueue(listOf(song))
+                    val deadline = System.currentTimeMillis() + 90_000
+                    while (System.currentTimeMillis() < deadline &&
+                        !container.downloadCatalog.contains(song.key)
+                    ) {
+                        delay(500)
+                    }
+                    val entry = container.downloadCatalog.items.value[song.key]
+                    val file = entry?.let { java.io.File(it.filePath) }
+                    if (file != null && file.isFile && file.length() > 0L) {
+                        host.log("PASS download-current ${song.displayName()} → ${file.name} (${file.length() / 1024} KB)")
+                    } else {
+                        host.log("FAIL download-current：文件未生成")
+                        ok = false
+                    }
+                }
+            }
+            "download-stats" -> {
+                val items = container.downloadCatalog.items.value
+                host.log(
+                    "download-stats 已下载=${items.size} 首 占用=${items.values.sumOf { it.sizeBytes } / 1024} KB " +
+                        "目录=${container.downloads.downloadDirectory().absolutePath}"
+                )
             }
             "bili-favorite" -> {
                 val mid = container.accounts.accountOf(moe.ouom.neriplayer.desktop.core.MediaSource.BILIBILI)

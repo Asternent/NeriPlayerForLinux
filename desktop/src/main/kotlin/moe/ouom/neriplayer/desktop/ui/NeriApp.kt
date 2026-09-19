@@ -78,6 +78,8 @@ private fun AppScaffold(container: AppContainer) {
     val duration by container.player.durationMs.collectAsState()
     var showOnboarding by remember { mutableStateOf(!settings.onboardingAccepted) }
     var uiTestOverlay by remember { mutableStateOf<String?>(null) }
+    val locateRequest = remember { mutableStateOf<Pair<Int, String?>?>(null) }
+    var showDownloadPanel by remember { mutableStateOf(false) }
     var loginSource by remember { mutableStateOf<moe.ouom.neriplayer.desktop.core.MediaSource?>(null) }
     val testScript = remember { System.getenv("NERIPLAYER_UI_TEST").orEmpty() }
 
@@ -142,6 +144,16 @@ private fun AppScaffold(container: AppContainer) {
 
             override fun showMessage(message: String) {
                 scope.launch { snackbarHostState.showSnackbar(message) }
+            }
+
+            override fun setLocateRequest(index: Int, songKey: String?) {
+                locateRequest.value = index to songKey
+                println("[ui-test] locate-request index=$index")
+            }
+
+            override fun openDownloadPanel() {
+                showDownloadPanel = true
+                println("[ui-test] downloads-panel opened")
             }
 
             override fun log(message: String) {
@@ -216,6 +228,8 @@ private fun AppScaffold(container: AppContainer) {
 
                     MainTab.LIBRARY -> LibraryScreen(
                         container = container,
+                        locateRequest = locateRequest.value,
+                        onOpenDownloads = { showDownloadPanel = true },
                         onOpenLocalPlaylist = { navigate(Screen.LocalPlaylistDetail(it)) },
                         onOpenCollection = { navigate(Screen.OnlineCollectionDetail(it)) },
                         onOpenLocalArtist = { navigate(Screen.LocalArtistDetail(it)) },
@@ -310,6 +324,14 @@ private fun AppScaffold(container: AppContainer) {
             container = container,
             source = pendingLogin,
             onDismiss = { loginSource = null },
+            showMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+        )
+    }
+
+    if (showDownloadPanel) {
+        DownloadPanel(
+            container = container,
+            onClose = { showDownloadPanel = false },
             showMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
         )
     }

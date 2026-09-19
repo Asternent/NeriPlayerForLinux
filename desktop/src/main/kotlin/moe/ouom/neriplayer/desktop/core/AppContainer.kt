@@ -23,6 +23,13 @@ class AppContainer {
     val online = OnlineRepository()
     val accounts = AccountRepository(online.httpService)
     val syncConfig = SyncConfigStore()
+    val downloadCatalog = DownloadCatalog()
+    val downloads = DownloadManager(
+        online = online,
+        settings = settings,
+        catalog = downloadCatalog,
+        scope = scope,
+    )
     val sync = GitHubSyncManager(
         configStore = syncConfig,
         playlists = playlists,
@@ -41,10 +48,12 @@ class AppContainer {
         lyricsRepository = lyrics,
         online = online,
         scope = scope,
+        downloads = downloadCatalog,
     )
 
     fun bootstrap(scanLibrary: Boolean = true) {
         library.load()
+        downloadCatalog.load()
         accounts.load()
         playlists.load()
         history.load()

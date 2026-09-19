@@ -3,6 +3,14 @@ package moe.ouom.neriplayer.desktop.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -155,6 +164,7 @@ fun ErrorCard(
 fun ClickableRow(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    highlight: Color = Color.Transparent,
     content: @Composable RowScope.(hovered: Boolean) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -164,8 +174,11 @@ fun ClickableRow(
             .fillMaxWidth()
             .hoverable(interaction)
             .background(
-                if (hovered) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
-                else Color.Transparent
+                if (hovered) {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                } else {
+                    highlight
+                }
             )
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -184,11 +197,25 @@ fun SongRow(
     subtitle: String? = null,
     trailing: @Composable (() -> Unit)? = null,
     onMore: (() -> Unit)? = null,
+    /** 是否为当前正在播放的歌曲（高亮显示）。 */
+    isCurrent: Boolean = false,
+    isPlaying: Boolean = false,
+    /** 刚被「定位到正在播放」命中时短暂闪烁。 */
+    highlightPulse: Boolean = false,
+    /** 已下载到本地，显示离线标记。 */
+    isDownloaded: Boolean = false,
 ) {
-    ClickableRow(modifier = modifier, onClick = onClick) { hovered ->
+    val highlight = when {
+        highlightPulse -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        else -> Color.Transparent
+    }
+    ClickableRow(modifier = modifier, onClick = onClick, highlight = highlight) { hovered ->
         if (index != null) {
             Box(Modifier.width(30.dp), contentAlignment = Alignment.Center) {
-                if (hovered) {
+                if (isCurrent) {
+                    PlayingIndicator(isPlaying = isPlaying, modifier = Modifier.size(16.dp))
+                } else if (hovered) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
                         contentDescription = null,
@@ -210,6 +237,7 @@ fun SongRow(
             Text(
                 text = song.displayName(),
                 style = MaterialTheme.typography.bodyLarge,
+                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -225,6 +253,15 @@ fun SongRow(
         if (trailing != null) {
             trailing()
         } else {
+            if (isDownloaded) {
+                Icon(
+                    imageVector = Icons.Outlined.DownloadDone,
+                    contentDescription = "已下载",
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    modifier = Modifier.size(15.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 text = formatDuration(song.durationMs),
                 style = MaterialTheme.typography.labelMedium,
@@ -243,6 +280,53 @@ fun SongRow(
             Spacer(Modifier.width(8.dp))
         }
     }
+}
+
+/** 正在播放指示器：播放时是跳动的三根音量条，暂停时静止。 */
+@Composable
+fun PlayingIndicator(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+) {
+    val transition = rememberInfiniteTransition(label = "playing-indicator")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 900
+                0f at 0
+                1f at 300
+                0.35f at 600
+                1f at 900
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "playing-phase",
+    )
+    Canvas(modifier) {
+        val barWidth = size.width / 5f
+        val ratios = if (isPlaying) {
+            listOf(0.45f + 0.5f * phase, 0.35f + 0.6f * (1f - phase), 0.5f + 0.45f * phase)
+        } else {
+            listOf(0.45f, 0.8f, 0.55f)
+        }
+        ratios.forEachIndexed { index, ratio ->
+            val barHeight = size.height * ratio.coerceIn(0.2f, 1f)
+            drawRect(
+                color = color,
+                topLeft = Offset(index * (barWidth * 1.7f), size.height - barHeight),
+                size = Size(barWidth, barHeight),
+            )
+        }
+    }
+}
+
+/** 当前播放歌曲在列表中的下标，找不到返回 -1。 */
+fun currentSongIndex(songs: List<Song>, currentSong: Song?): Int {
+    val key = currentSong?.key ?: return -1
+    return songs.indexOfFirst { it.key == key }
 }
 
 @Composable

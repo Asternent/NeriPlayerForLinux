@@ -32,6 +32,7 @@ object AppDirs {
     val searchHistoryFile: File get() = File(dataDir, "search_history.json")
     val accountFile: File get() = File(configDir, "accounts.json")
     val syncConfigFile: File get() = File(configDir, "sync.json")
+    val downloadCatalogFile: File get() = File(dataDir, "downloads.json")
 }
 
 val NeriJson: Json = Json {
@@ -141,6 +142,13 @@ data class AppSettings(
     /** 位置用屏幕比例表示，支持多分辨率与多屏。 */
     val floatingLyricsPositionX: Float = 0.5f,
     val floatingLyricsPositionY: Float = 0.85f,
+
+    // ---------------------------------------------------------------- 下载
+    /** 下载目录，留空表示默认 ~/Music/NeriPlayer。 */
+    val downloadDirectory: String = "",
+    val downloadQuality: String = "exhigh",
+    val downloadConcurrency: Int = 2,
+    val downloadNotifyOnComplete: Boolean = true,
 )
 
 /** 设置仓库：内存 StateFlow + JSON 持久化。 */
