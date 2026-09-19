@@ -149,5 +149,160 @@ fun main() = runBlocking {
     log("--- 账号解析自检 ---")
     checkAccountParsing()
     log("账号解析失败项：$checksFailed")
+    log("--- GitHub 同步自检 ---")
+    checkSyncSerializerAndMerge()
+    log("累计失败项：$checksFailed")
     log("DONE")
+}
+
+/** 同步通道序列化与合并策略的离线自检。 */
+private fun checkSyncSerializerAndMerge() {
+    val songA = moe.ouom.neriplayer.desktop.sync.SyncSong(
+        id = 123L,
+        name = "测试歌曲A",
+        artist = "歌手A",
+        album = "专辑A",
+        durationMs = 210_000L,
+        addedAt = 1_000L,
+    )
+    val songB = songA.copy(id = 456L, name = "测试歌曲B", album = "专辑B", addedAt = 2_000L)
+    val payload = moe.ouom.neriplayer.desktop.sync.SyncData(
+        deviceId = "desktop-test",
+        deviceName = "self-test",
+        playlists = listOf(
+            moe.ouom.neriplayer.desktop.sync.SyncPlaylist(
+                id = 1L,
+                name = "歌单A",
+                songs = listOf(songA),
+                createdAt = 10L,
+                modifiedAt = 20L,
+            )
+        ),
+        favoritePlaylists = listOf(
+            moe.ouom.neriplayer.desktop.sync.SyncFavoritePlaylist(
+                id = 7L,
+                name = "网易云收藏",
+                source = "netease",
+                songs = listOf(songA),
+                addedTime = 5L,
+                modifiedAt = 6L,
+            )
+        ),
+        recentPlays = listOf(
+            moe.ouom.neriplayer.desktop.sync.SyncRecentPlay(songId = 123L, song = songA, playedAt = 999L)
+        ),
+        playbackStatBuckets = listOf(
+            moe.ouom.neriplayer.desktop.sync.SyncPlaybackStatBucket(
+                dayStartAt = 1_700_000_000_000L,
+                identityKey = "123|专辑A|",
+                playCount = 3,
+                totalListenMs = 12_000L,
+            )
+        ),
+    )
+
+    val jsonBytes = moe.ouom.neriplayer.desktop.sync.SyncDataSerializer.serialize(payload, useDataSaver = false)
+    check("sync-json-text", jsonBytes.decodeToString().trimStart().startsWith("{"))
+    check(
+        "sync-json-roundtrip",
+        moe.ouom.neriplayer.desktop.sync.SyncDataSerializer.deserialize(jsonBytes) == payload,
+    )
+
+    val rawBytes = moe.ouom.neriplayer.desktop.sync.SyncDataSerializer.serialize(payload, useDataSaver = true)
+    check(
+        "sync-raw-gzip-magic",
+        rawBytes.size > 2 && rawBytes[0] == 0x1F.toByte() && rawBytes[1] == 0x8B.toByte(),
+        "size=${rawBytes.size} json=${jsonBytes.size}",
+    )
+    check(
+        "sync-raw-roundtrip",
+        moe.ouom.neriplayer.desktop.sync.SyncDataSerializer.deserialize(rawBytes) == payload,
+    )
+    val legacy = java.util.Base64.getEncoder().encodeToString(rawBytes)
+    check(
+        "sync-legacy-base64-roundtrip",
+        moe.ouom.neriplayer.desktop.sync.SyncDataSerializer.deserialize(legacy.toByteArray()) == payload,
+    )
+
+    // 合并：歌单按 modifiedAt 取新 + 歌曲取并集
+    val local = moe.ouom.neriplayer.desktop.sync.SyncData(
+        playlists = listOf(
+            moe.ouom.neriplayer.desktop.sync.SyncPlaylist(id = 1L, name = "本地旧名", songs = listOf(songA), modifiedAt = 10L)
+        ),
+    )
+    val remote = moe.ouom.neriplayer.desktop.sync.SyncData(
+        deviceId = "phone",
+        playlists = listOf(
+            moe.ouom.neriplayer.desktop.sync.SyncPlaylist(id = 1L, name = "远端新名", songs = listOf(songB), modifiedAt = 20L)
+        ),
+    )
+    val merged = moe.ouom.neriplayer.desktop.sync.SyncMerger.merge(local, remote)
+    check(
+        "sync-merge-playlist-newer-wins",
+        merged.playlists.size == 1 && merged.playlists.first().name == "远端新名",
+        "name=${merged.playlists.firstOrNull()?.name}",
+    )
+    check(
+        "sync-merge-song-union",
+        merged.playlists.first().songs.size == 2,
+        "songs=${merged.playlists.first().songs.size}",
+    )
+    check(
+        "sync-merge-keeps-remote-fields",
+        merged.deviceId == "phone",
+        "deviceId=${merged.deviceId}",
+    )
+
+    // 统计合并取 max，避免重复累加
+    val statLocal = moe.ouom.neriplayer.desktop.sync.SyncTrackStat(
+        identityKey = "123|专辑A|",
+        totalListenMs = 5_000L,
+        playCount = 2,
+    )
+    val statRemote = statLocal.copy(totalListenMs = 9_000L, playCount = 4)
+    val mergedStats = moe.ouom.neriplayer.desktop.sync.SyncMerger.merge(
+        moe.ouom.neriplayer.desktop.sync.SyncData(playbackStats = listOf(statLocal)),
+        moe.ouom.neriplayer.desktop.sync.SyncData(playbackStats = listOf(statRemote)),
+    ).playbackStats
+    check(
+        "sync-merge-stats-max",
+        mergedStats.size == 1 && mergedStats.first().totalListenMs == 9_000L && mergedStats.first().playCount == 4,
+    )
+
+    // 最近播放：按身份去重并保留最新时间
+    val recentMerged = moe.ouom.neriplayer.desktop.sync.SyncMerger.merge(
+        moe.ouom.neriplayer.desktop.sync.SyncData(
+            recentPlays = listOf(
+                moe.ouom.neriplayer.desktop.sync.SyncRecentPlay(song = songA, playedAt = 100L)
+            )
+        ),
+        moe.ouom.neriplayer.desktop.sync.SyncData(
+            recentPlays = listOf(
+                moe.ouom.neriplayer.desktop.sync.SyncRecentPlay(song = songA, playedAt = 500L)
+            )
+        ),
+    ).recentPlays
+    check("sync-merge-recent-latest", recentMerged.size == 1 && recentMerged.first().playedAt == 500L)
+
+    // 删除墓碑：比 addedAt 更新的删除记录应移除歌曲
+    val tombstone = moe.ouom.neriplayer.desktop.sync.SyncPlaylistSongDeletion(
+        playlistId = 1L,
+        songId = songB.id,
+        album = songB.album,
+        deletedAt = 5_000L,
+    )
+    val afterDeletion = moe.ouom.neriplayer.desktop.sync.SyncMerger.merge(
+        moe.ouom.neriplayer.desktop.sync.SyncData(
+            playlists = listOf(
+                moe.ouom.neriplayer.desktop.sync.SyncPlaylist(id = 1L, name = "列表", songs = listOf(songA), modifiedAt = 1L)
+            )
+        ),
+        moe.ouom.neriplayer.desktop.sync.SyncData(
+            playlists = listOf(
+                moe.ouom.neriplayer.desktop.sync.SyncPlaylist(id = 1L, name = "列表", songs = listOf(songB), modifiedAt = 2L)
+            ),
+            playlistSongDeletions = listOf(tombstone),
+        ),
+    ).playlists.first().songs
+    check("sync-merge-deletion-tombstone", afterDeletion.size == 1 && afterDeletion.first().id == songA.id)
 }

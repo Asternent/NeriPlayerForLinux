@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "moe.ouom.neriplayer"
-version = "1.0.1"
+version = "1.1.0"
 
 kotlin {
     jvmToolchain(17)
@@ -19,6 +19,7 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
     implementation("com.materialkolor:material-color-utilities-jvm:3.0.1")
     implementation("net.jthink:jaudiotagger:3.0.1")
@@ -36,7 +37,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb)
             packageName = "NeriPlayer"
-            packageVersion = "1.0.1"
+            packageVersion = "1.1.0"
             description = "NeriPlayer 音理音理 — Linux 原生 Compose Desktop 音乐播放器"
             vendor = "NeriPlayer Desktop"
             copyright = "GPL-3.0-only"
@@ -59,4 +60,13 @@ tasks.register<JavaExec>("selfTest") {
     description = "运行核心功能自检（网络 / 解码 / 播放 / 歌词）"
     mainClass.set("moe.ouom.neriplayer.desktop.tools.SelfTestKt")
     classpath = sourceSets["main"].runtimeClasspath
+}
+
+/** 真实的 GitHub 同步端到端测试（需要 GH_TOKEN，会创建并删除一个临时私有仓库）。 */
+tasks.register<JavaExec>("syncE2E") {
+    group = "verification"
+    description = "GitHub 同步端到端测试"
+    mainClass.set("moe.ouom.neriplayer.desktop.tools.SyncE2ETestKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    environment("GH_TOKEN", System.getenv("GH_TOKEN") ?: "")
 }

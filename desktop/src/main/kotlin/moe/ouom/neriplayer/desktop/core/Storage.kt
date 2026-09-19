@@ -31,6 +31,7 @@ object AppDirs {
     val settingsFile: File get() = File(configDir, "settings.json")
     val searchHistoryFile: File get() = File(dataDir, "search_history.json")
     val accountFile: File get() = File(configDir, "accounts.json")
+    val syncConfigFile: File get() = File(configDir, "sync.json")
 }
 
 val NeriJson: Json = Json {

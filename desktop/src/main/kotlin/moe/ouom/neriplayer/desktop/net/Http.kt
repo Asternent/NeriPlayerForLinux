@@ -183,6 +183,51 @@ class HttpService {
         storeCookies(host, response)
         response.body()
     }.getOrNull()
+
+    /** 需要读取状态码 / 响应头的调用（GitHub 同步接口要用）。 */
+    data class RawResponse(
+        val status: Int,
+        val bytes: ByteArray,
+        val header: (String) -> String?,
+    ) {
+        fun text(): String = bytes.decodeToString()
+    }
+
+    fun execute(
+        method: String,
+        url: String,
+        body: String? = null,
+        headers: Map<String, String> = emptyMap(),
+        timeoutSeconds: Long = 30,
+    ): RawResponse? = runCatching {
+        val host = runCatching { URI(url).host }.getOrNull().orEmpty()
+        val builder = HttpRequest.newBuilder(URI(url))
+            .timeout(Duration.ofSeconds(timeoutSeconds))
+            .header("User-Agent", DESKTOP_USER_AGENT)
+            .header("Accept-Encoding", "gzip")
+        headers.forEach { (key, value) -> builder.header(key, value) }
+        cookieHeaderFor(host)?.let { builder.header("Cookie", it) }
+        val publisher = if (body == null) {
+            HttpRequest.BodyPublishers.noBody()
+        } else {
+            HttpRequest.BodyPublishers.ofString(body)
+        }
+        when (method.uppercase()) {
+            "GET" -> builder.GET()
+            "POST" -> builder.POST(publisher)
+            "PUT" -> builder.PUT(publisher)
+            "PATCH" -> builder.method("PATCH", publisher)
+            "DELETE" -> builder.DELETE()
+            else -> builder.method(method.uppercase(), publisher)
+        }
+        val response = client.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
+        storeCookies(host, response)
+        RawResponse(
+            status = response.statusCode(),
+            bytes = response.body() ?: ByteArray(0),
+            header = { name -> response.headers().firstValue(name).orElse(null) },
+        )
+    }.getOrNull()
 }
 
 fun urlEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)

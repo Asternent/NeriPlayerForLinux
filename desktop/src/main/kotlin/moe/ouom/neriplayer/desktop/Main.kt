@@ -20,8 +20,14 @@ fun main() {
     val container = AppContainer()
     container.bootstrap()
     application {
+        // 允许通过环境变量覆盖初始窗口尺寸（便于截图与多屏使用）
+        val sizeOverride = System.getenv("NERIPLAYER_WINDOW_SIZE").orEmpty()
+        val windowSize = sizeOverride.split('x').mapNotNull { it.trim().toIntOrNull() }
+            .takeIf { it.size == 2 }
+            ?.let { DpSize(it[0].dp, it[1].dp) }
+            ?: DpSize(1180.dp, 820.dp)
         val windowState = rememberWindowState(
-            size = DpSize(1180.dp, 820.dp),
+            size = windowSize,
             position = WindowPosition(Alignment.Center),
         )
         Window(

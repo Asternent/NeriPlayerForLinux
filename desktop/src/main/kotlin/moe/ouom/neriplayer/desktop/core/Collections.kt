@@ -111,6 +111,49 @@ class PlaylistRepository {
         }
         return !isFav
     }
+
+    /** 同步导入：按固定 ID 覆盖或创建歌单。 */
+    fun upsertFromSync(
+        playlistId: String,
+        name: String,
+        songs: List<Song>,
+        createdAt: Long,
+        updatedAt: Long,
+    ): Boolean {
+        val existing = _playlists.value.firstOrNull { it.id == playlistId }
+        return if (existing == null) {
+            _playlists.value = _playlists.value + Playlist(
+                id = playlistId,
+                name = name,
+                songs = songs,
+                system = false,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+            )
+            persist()
+            true
+        } else if (existing.songs != songs || existing.name != name) {
+            _playlists.value = _playlists.value.map {
+                if (it.id == playlistId) it.copy(name = name, songs = songs, updatedAt = updatedAt) else it
+            }
+            persist()
+            true
+        } else {
+            false
+        }
+    }
+
+    /** 同步导入：整体替换「我喜欢的音乐」。 */
+    fun replaceFavorites(songs: List<Song>) {
+        _playlists.value = _playlists.value.map { playlist ->
+            if (playlist.id == FAVORITES_PLAYLIST_ID) {
+                playlist.copy(songs = songs, updatedAt = System.currentTimeMillis())
+            } else {
+                playlist
+            }
+        }
+        persist()
+    }
 }
 
 /** 播放历史 / 继续播放。 */
@@ -147,6 +190,23 @@ class HistoryRepository {
 
     fun removeEntry(songKey: String) {
         _entries.value = _entries.value.filterNot { it.song.key == songKey }
+        persist()
+    }
+
+    /** 同步导入：写入一条最近播放记录（保留原时间）。 */
+    fun importEntry(song: Song, playedAt: Long, playCount: Int) {
+        if (playedAt <= 0L) return
+        val list = _entries.value.toMutableList()
+        val index = list.indexOfFirst { it.song.key == song.key }
+        if (index >= 0) {
+            val old = list[index]
+            if (playedAt >= old.playedAt) {
+                list[index] = old.copy(song = song, playedAt = playedAt, playCount = maxOf(old.playCount, playCount))
+            }
+        } else {
+            list.add(UsageEntry(song = song, playedAt = playedAt, playCount = playCount.coerceAtLeast(1)))
+        }
+        _entries.value = list.sortedByDescending { it.playedAt }.take(600)
         persist()
     }
 
@@ -224,6 +284,24 @@ class StatsRepository(private val history: HistoryRepository) {
 
     fun clear() {
         _stats.value = emptyList()
+        persist()
+    }
+
+    /** 同步导入：按 (歌曲, 日期) 取较大值合并。 */
+    fun upsertFromSync(songKey: String, day: String, playCount: Int, listenMs: Long) {
+        if (day.isBlank()) return
+        val list = _stats.value.toMutableList()
+        val index = list.indexOfFirst { it.songKey == songKey && it.day == day }
+        if (index >= 0) {
+            val old = list[index]
+            list[index] = old.copy(
+                playCount = maxOf(old.playCount, playCount),
+                listenMs = maxOf(old.listenMs, listenMs),
+            )
+        } else {
+            list.add(PlayStat(songKey, day, playCount.coerceAtLeast(0), listenMs.coerceAtLeast(0)))
+        }
+        _stats.value = list
         persist()
     }
 
