@@ -24,6 +24,13 @@ class OnlineRepository(private val http: HttpService = HttpService()) {
     /** 暴露给账号仓库复用同一份 Cookie 与连接设置。 */
     val httpService: HttpService get() = http
 
+    /** 收藏夹封面接口不返回封面，加载过内容后把首条封面缓存下来供列表复用。 */
+    private val _collectionCovers = kotlinx.coroutines.flow.MutableStateFlow<Map<String, String>>(emptyMap())
+    val collectionCovers: kotlinx.coroutines.flow.StateFlow<Map<String, String>> = _collectionCovers
+
+    fun coverFor(collection: OnlineCollection): String? =
+        collection.coverUrl ?: _collectionCovers.value[collection.id]
+
     val netease = NeteaseApi(http)
     val bilibili = BiliApi(http)
 
@@ -120,7 +127,37 @@ class OnlineRepository(private val http: HttpService = HttpService()) {
     suspend fun playlistSongs(collection: OnlineCollection): List<Song> = withContext(Dispatchers.IO) {
         when (collection.source) {
             MediaSource.NETEASE -> netease.playlistDetail(collection.id)?.second.orEmpty()
+            MediaSource.BILIBILI -> bilibili.favoriteFolderSongs(collection.id)
             else -> emptyList()
+        }
+    }
+
+    /**
+     * 按来源加载歌单 / 收藏夹内容；onPage 用于边加载边刷新界面。
+     * 网易云可能是歌单也可能是专辑，因此歌单为空时回退到专辑接口。
+     */
+    suspend fun songsForCollection(
+        collection: OnlineCollection,
+        onPage: (List<Song>) -> Unit = {},
+    ): List<Song> = withContext(Dispatchers.IO) {
+        when (collection.source) {
+            MediaSource.NETEASE -> {
+                val detail = netease.playlistDetail(collection.id)
+                if (!detail?.second.isNullOrEmpty()) {
+                    detail!!.second
+                } else {
+                    netease.albumDetail(collection.id)?.second.orEmpty()
+                }
+            }
+
+            MediaSource.BILIBILI -> bilibili.favoriteFolderSongs(collection.id, onPage = onPage)
+            else -> emptyList()
+        }
+    }.also { loaded ->
+        if (collection.coverUrl.isNullOrBlank()) {
+            loaded.firstOrNull()?.artworkUrl?.let { cover ->
+                _collectionCovers.value = _collectionCovers.value + (collection.id to cover)
+            }
         }
     }
 

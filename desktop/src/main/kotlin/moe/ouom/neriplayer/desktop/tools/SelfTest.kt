@@ -10,6 +10,7 @@ import moe.ouom.neriplayer.desktop.core.Song
 import moe.ouom.neriplayer.desktop.core.createAudioEngine
 import moe.ouom.neriplayer.desktop.core.displayName
 import moe.ouom.neriplayer.desktop.net.OnlineRepository
+import moe.ouom.neriplayer.desktop.net.asObject
 import java.io.File
 
 private fun log(message: String) = println("[selftest] $message")
@@ -126,6 +127,32 @@ fun main() = runBlocking {
     check(
         "netease-playlist-limited",
         (online.netease.playlistDetail("3778678", limit = 5)?.second?.size ?: 0) == 5,
+    )
+
+    // 6. 必站收藏夹条目映射（时长单位是秒、封面 http 需要转 https、标题要去掉高亮标签）
+    val favoriteItem = moe.ouom.neriplayer.desktop.net.NeriJsonParser.parse(
+        """{"bvid":"BV1test","title":"【<em class=\"keyword\">音乐</em>】收藏夹测试视频","duration":206,"cover":"http://i1.hdslb.com/bfs/archive/x.jpg","upper":{"name":"测试UP主"}}"""
+    ).asObject()
+    val mapped = favoriteItem?.let {
+        moe.ouom.neriplayer.desktop.net.favoriteMediaToSong(moe.ouom.neriplayer.desktop.net.JsonObjectSelf(it))
+    }
+    check(
+        "bili-favorite-mapping",
+        mapped != null &&
+            mapped.title == "【音乐】收藏夹测试视频" &&
+            mapped.durationMs == 206_000L &&
+            mapped.artist == "测试UP主" &&
+            mapped.remoteId == "BV1test" &&
+            mapped.artworkUrl?.startsWith("https://") == true,
+        "title=${mapped?.title} duration=${mapped?.durationMs} cover=${mapped?.artworkUrl}",
+    )
+    val emptyItem = moe.ouom.neriplayer.desktop.net.NeriJsonParser.parse("{}").asObject()
+    check(
+        "bili-favorite-missing-bvid",
+        emptyItem == null ||
+            moe.ouom.neriplayer.desktop.net.favoriteMediaToSong(
+                moe.ouom.neriplayer.desktop.net.JsonObjectSelf(emptyItem)
+            ) == null,
     )
 
     // 3. 生成测试音频并播放

@@ -31,6 +31,8 @@ fun parseUiScript(script: String): List<UiScriptCommand> =
 interface UiScriptHost {
     fun selectTab(tab: String)
     fun openScreen(screen: String, argument: String)
+    /** 打开在线歌单 / 收藏夹详情（用于验证需要登录的集合）。 */
+    fun openCollection(collection: moe.ouom.neriplayer.desktop.core.OnlineCollection)
     fun goBack()
     fun setOverlay(name: String?)
     fun showMessage(message: String)
@@ -297,6 +299,78 @@ suspend fun runUiScript(
             "floating-position" -> {
                 val handle = moe.ouom.neriplayer.desktop.ui.FloatingLyricsWindowHandle
                 host.log("floating-position ${handle.position()} 可见=${handle.isVisible()}")
+            }
+            "bili-favorite" -> {
+                val mid = container.accounts.accountOf(moe.ouom.neriplayer.desktop.core.MediaSource.BILIBILI)
+                    ?.userId.orEmpty()
+                if (mid.isBlank()) {
+                    host.log("FAIL bili-favorite：未登录哔哩哔哩")
+                    ok = false
+                } else {
+                    val folders = kotlinx.coroutines.runBlocking {
+                        runCatching { container.online.bilibili.favoriteFolders(mid) }.getOrDefault(emptyList())
+                    }
+                    val first = folders.firstOrNull()
+                    if (first == null) {
+                        host.log("FAIL bili-favorite：没有取到收藏夹")
+                        ok = false
+                    } else {
+                        host.log(
+                            "bili-favorite 收藏夹 ${folders.size} 个，打开「${first.name}」（声明 ${first.trackCount} 首）"
+                        )
+                        host.openCollection(first)
+                    }
+                }
+            }
+            "bili-fav-stats" -> {
+                val mid = container.accounts.accountOf(moe.ouom.neriplayer.desktop.core.MediaSource.BILIBILI)
+                    ?.userId.orEmpty()
+                val folders = kotlinx.coroutines.runBlocking {
+                    runCatching { container.online.bilibili.favoriteFolders(mid) }.getOrDefault(emptyList())
+                }
+                val first = folders.firstOrNull()
+                val sample = if (first == null) {
+                    emptyList()
+                } else {
+                    kotlinx.coroutines.runBlocking {
+                        runCatching {
+                            container.online.bilibili.favoriteFolderSongs(first.id, maxItems = 40)
+                        }.getOrDefault(emptyList())
+                    }
+                }
+                host.log(
+                    "bili-fav-stats 收藏夹=${folders.size} 首个=${first?.name} 声明=${first?.trackCount} " +
+                        "实际取回=${sample.size} 示例=${sample.firstOrNull()?.displayName()}"
+                )
+                if (sample.isEmpty()) {
+                    host.log("FAIL bili-fav-stats：收藏夹内容为空")
+                    ok = false
+                }
+            }
+            "bili-fav-play" -> {
+                // 播放收藏夹里的第一首，验证「收藏夹 → 音频地址解析 → 真的出声」整条链路
+                val mid = container.accounts.accountOf(moe.ouom.neriplayer.desktop.core.MediaSource.BILIBILI)
+                    ?.userId.orEmpty()
+                val songs = kotlinx.coroutines.runBlocking {
+                    val folders = runCatching { container.online.bilibili.favoriteFolders(mid) }
+                        .getOrDefault(emptyList())
+                    val firstFolder = folders.firstOrNull()
+                    if (firstFolder == null) {
+                        emptyList()
+                    } else {
+                        runCatching {
+                            container.online.bilibili.favoriteFolderSongs(firstFolder.id, maxItems = 3)
+                        }.getOrDefault(emptyList())
+                    }
+                }
+                val song = songs.firstOrNull()
+                if (song == null) {
+                    host.log("FAIL bili-fav-play：收藏夹里没有可播放的视频")
+                    ok = false
+                } else {
+                    container.player.setQueue(songs, 0, autoPlay = true)
+                    host.log("bili-fav-play 开始播放：${song.displayName()} / ${song.artistText()}")
+                }
             }
             "expect-floating-position" -> {
                 val parts = command.argument.split(',').map { it.trim().toIntOrNull() }

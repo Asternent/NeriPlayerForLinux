@@ -408,32 +408,31 @@ fun OnlineCollectionDetailScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var actionSong by remember { mutableStateOf<Song?>(null) }
     var reloadToken by remember { mutableStateOf(0) }
+    // 收藏夹这类需要翻页的集合：边加载边展示，并显示进度
+    val partialFlow = remember(collection.id) { kotlinx.coroutines.flow.MutableStateFlow<List<Song>>(emptyList()) }
+    val partialSongs by partialFlow.collectAsState()
 
     LaunchedEffect(collection.id, reloadToken) {
         loading = true
         error = null
+        songs = emptyList()
+        partialFlow.value = emptyList()
         runCatching {
             withContext(Dispatchers.IO) {
-                when (collection.source) {
-                    moe.ouom.neriplayer.desktop.core.MediaSource.NETEASE -> {
-                        val detail = container.online.netease.playlistDetail(collection.id)
-                        if (detail == null || detail.second.isEmpty()) {
-                            container.online.netease.albumDetail(collection.id)?.second.orEmpty()
-                        } else {
-                            detail.second
-                        }
-                    }
-
-                    else -> emptyList()
+                container.online.songsForCollection(collection) { page ->
+                    partialFlow.value = page
                 }
             }
         }.onSuccess { songs = it }.onFailure { error = it.message ?: it.javaClass.simpleName }
         loading = false
     }
 
+    val displayedSongs = if (songs.isNotEmpty()) songs else partialSongs
+
     DetailScaffold(title = collection.name, onBack = onBack) {
         when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // 翻页加载时先展示已取回的部分，只有还没有任何数据时才显示转圈
+            loading && displayedSongs.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(modifier = Modifier.size(28.dp))
             }
 
@@ -450,28 +449,43 @@ fun OnlineCollectionDetailScreen(
                                 append("播放 ${formatPlayCount(collection.playCount)}")
                             }
                             if (isNotEmpty()) append(" · ")
-                            append("${songs.size} 首")
+                            append(
+                                when {
+                                    loading && collection.trackCount > 0 ->
+                                        "已加载 ${displayedSongs.size} / ${collection.trackCount} 首"
+
+                                    else -> "${displayedSongs.size} 首"
+                                }
+                            )
                         },
                         cover = {
                             RemoteArtwork(
-                                url = collection.coverUrl,
+                                url = container.online.coverFor(collection) ?: displayedSongs.firstOrNull()?.artworkUrl,
                                 size = 132.dp,
                                 shape = RoundedCornerShape(20.dp),
                                 fallback = Icons.Outlined.History,
                             )
                         },
-                        onPlayAll = { if (songs.isNotEmpty()) container.player.setQueue(songs, 0, autoPlay = true) },
-                        onShuffle = { if (songs.isNotEmpty()) container.player.setQueue(songs.shuffled(), 0, autoPlay = true) },
+                        onPlayAll = {
+                            if (displayedSongs.isNotEmpty()) {
+                                container.player.setQueue(displayedSongs, 0, autoPlay = true)
+                            }
+                        },
+                        onShuffle = {
+                            if (displayedSongs.isNotEmpty()) {
+                                container.player.setQueue(displayedSongs.shuffled(), 0, autoPlay = true)
+                            }
+                        },
                     )
                 }
-                if (songs.isEmpty()) {
+                if (displayedSongs.isEmpty() && !loading) {
                     item { EmptyState(title = "暂时没有获取到歌曲", hint = "该歌单可能需要登录后才能完整访问") }
                 }
-                itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
+                itemsIndexed(displayedSongs, key = { _, song -> song.key }) { index, song ->
                     SongRow(
                         song = song,
                         index = index,
-                        onClick = { container.player.playSongNow(song, songs) },
+                        onClick = { container.player.playSongNow(song, displayedSongs) },
                         onMore = { actionSong = song },
                     )
                 }

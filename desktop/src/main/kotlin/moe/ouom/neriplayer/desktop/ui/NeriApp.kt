@@ -120,6 +120,11 @@ private fun AppScaffold(container: AppContainer) {
                 }
             }
 
+            override fun openCollection(collection: moe.ouom.neriplayer.desktop.core.OnlineCollection) {
+                backStack.add(Screen.OnlineCollectionDetail(collection))
+                println("[ui-test] collection=${collection.name}")
+            }
+
             override fun goBack() {
                 if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
             }

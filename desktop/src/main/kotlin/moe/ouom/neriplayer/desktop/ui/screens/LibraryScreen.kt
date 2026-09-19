@@ -387,7 +387,13 @@ fun LibraryScreen(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
                                             items(myCollections, key = { "fav-${it.id}" }) { collection ->
-                                                CollectionCard(collection, onClick = { onOpenCollection(collection) })
+                                                CollectionCard(
+                                                    collection.copy(
+                                                        coverUrl = container.online.coverFor(collection)
+                                                            ?: collection.coverUrl,
+                                                    ),
+                                                    onClick = { onOpenCollection(collection) },
+                                                )
                                             }
                                         }
                                     }

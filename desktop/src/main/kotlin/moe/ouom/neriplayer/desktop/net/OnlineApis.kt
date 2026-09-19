@@ -555,4 +555,55 @@ class BiliApi(private val http: HttpService) {
             )
         }
     }
+
+    /**
+     * 读取收藏夹内的视频（作为可播放音频）。
+     * 该接口每页最多 20 条，需要按 pn 翻页；onPage 会在每页返回时回调已累计的列表，便于界面边加载边展示。
+     */
+    fun favoriteFolderSongs(
+        mediaId: String,
+        maxItems: Int = 2000,
+        onPage: (List<Song>) -> Unit = {},
+    ): List<Song> {
+        if (mediaId.isBlank()) return emptyList()
+        ensureCookies()
+        val collected = ArrayList<Song>()
+        var page = 1
+        while (collected.size < maxItems && page <= 100) {
+            val url = "https://api.bilibili.com/x/v3/fav/resource/list" +
+                "?media_id=$mediaId&pn=$page&ps=20&platform=web"
+            val text = http.get(url, headers) ?: break
+            val root = NeriJsonParser.parse(text).asObject() ?: break
+            if (root.int("code") != 0) {
+                println("[bili] 收藏夹内容读取失败：code=${root.int("code")} ${root.str("message")}")
+                break
+            }
+            val data = root.obj("data") ?: break
+            val medias = data.array("medias")?.objects().orEmpty()
+            if (medias.isEmpty()) break
+            medias.forEach { item ->
+                favoriteMediaToSong(JsonObjectSelf(item))?.let { collected += it }
+            }
+            onPage(collected.toList())
+            val hasMore = data.bool("has_more") ?: false
+            if (!hasMore) break
+            page += 1
+        }
+        return if (collected.size > maxItems) collected.take(maxItems) else collected
+    }
+}
+
+/** 收藏夹条目 → 可播放歌曲（duration 单位为秒，封面为 http 需转 https）。可离线单测。 */
+fun favoriteMediaToSong(item: JsonObjectSelf): Song? {
+    val bvid = item.str("bvid")?.takeIf { it.isNotBlank() } ?: return null
+    return Song(
+        key = biliSongKey(bvid),
+        source = MediaSource.BILIBILI,
+        title = cleanBiliText(item.str("title")).ifBlank { "未知视频" },
+        artist = cleanBiliText(item.obj("upper")?.str("name")),
+        album = "哔哩哔哩收藏夹",
+        durationMs = (item.long("duration") ?: 0L) * 1000L,
+        remoteId = bvid,
+        artworkUrl = normalizeImageUrl(item.str("cover")),
+    )
 }
