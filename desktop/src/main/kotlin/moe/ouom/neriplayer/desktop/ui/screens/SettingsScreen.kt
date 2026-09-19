@@ -71,6 +71,7 @@ import moe.ouom.neriplayer.desktop.ui.AccountRow
 import moe.ouom.neriplayer.desktop.ui.EqualizerPresets
 import moe.ouom.neriplayer.desktop.ui.LoginDialog
 import moe.ouom.neriplayer.desktop.ui.SyncSettingsSection
+import moe.ouom.neriplayer.desktop.ui.FloatingLyricsSettingsSection
 import moe.ouom.neriplayer.desktop.ui.theme.colorFromHex
 import moe.ouom.neriplayer.desktop.ui.theme.COLOR_SPECS
 import moe.ouom.neriplayer.desktop.ui.theme.PALETTE_STYLES
@@ -444,6 +445,13 @@ fun SettingsScreen(
         }
 
         item {
+            FloatingLyricsSettingsSection(
+                container = container,
+                showMessage = showMessage,
+            )
+        }
+
+        item {
             SettingsSection(
                 title = "首页栏目",
                 description = "控制首页展示的卡片",
@@ -486,7 +494,7 @@ fun SettingsScreen(
                 description = "版本信息、运行环境与数据管理",
                 icon = Icons.Outlined.Info,
             ) {
-                InfoRow("应用版本", "NeriPlayer Desktop 1.1.0")
+                InfoRow("应用版本", "NeriPlayer Desktop 1.2.0")
                 InfoRow("音频引擎", if (FfmpegSupport.available) "ffmpeg（${FfmpegSupport.version.take(28)}…）" else "Java Sound 回退引擎")
                 InfoRow("音效支持", if (container.player.supportsEffects) "倍速 / 变调 / 响度 / 均衡器可用" else "当前不可用（缺少 ffmpeg）")
                 InfoRow("数据目录", AppDirs.dataDir.absolutePath)

@@ -239,6 +239,37 @@ suspend fun runUiScript(
                 host.log("login-check ${source.displayName}: $result")
             }
             "log" -> host.log(command.argument)
+            "floating" -> {
+                val enabled = command.argument.equals("on", ignoreCase = true)
+                container.settings.update { it.copy(floatingLyricsEnabled = enabled) }
+                host.log("floating-lyrics enabled=$enabled")
+            }
+            "floating-config" -> {
+                // 形如 floating-config:fontSize=44,color=YELLOW,style=OUTLINE,translation=true
+                command.argument.split(',').map { it.trim() }.filter { it.contains('=') }.forEach { pair ->
+                    val key = pair.substringBefore('=')
+                    val value = pair.substringAfter('=')
+                    container.settings.update { current ->
+                        when (key) {
+                            "fontSize" -> current.copy(floatingLyricsFontSize = value.toFloatOrNull() ?: current.floatingLyricsFontSize)
+                            "color" -> current.copy(floatingLyricsTextColor = value)
+                            "style" -> current.copy(floatingLyricsRenderStyle = value)
+                            "outlineColor" -> current.copy(floatingLyricsOutlineColor = value)
+                            "shadowColor" -> current.copy(floatingLyricsShadowColor = value)
+                            "translation" -> current.copy(floatingLyricsShowTranslation = value.toBoolean())
+                            "alpha" -> current.copy(floatingLyricsLyricAlpha = value.toFloatOrNull() ?: current.floatingLyricsLyricAlpha)
+                            "background" -> current.copy(floatingLyricsBackgroundAlpha = value.toFloatOrNull() ?: current.floatingLyricsBackgroundAlpha)
+                            "maxWidth" -> current.copy(floatingLyricsMaxWidthDp = value.toFloatOrNull() ?: current.floatingLyricsMaxWidthDp)
+                            "positionX" -> current.copy(floatingLyricsPositionX = value.toFloatOrNull() ?: current.floatingLyricsPositionX)
+                            "positionY" -> current.copy(floatingLyricsPositionY = value.toFloatOrNull() ?: current.floatingLyricsPositionY)
+                            "hideInApp" -> current.copy(floatingLyricsHideInApp = value.toBoolean())
+                            "locked" -> current.copy(floatingLyricsLocked = value.toBoolean())
+                            else -> current
+                        }
+                    }
+                }
+                host.log("floating-config applied: ${command.argument}")
+            }
             "bili-debug" -> {
                 val info = kotlinx.coroutines.runBlocking {
                     runCatching { container.online.bilibili.debugSearch(command.argument.ifBlank { "音乐" }) }

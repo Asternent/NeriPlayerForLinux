@@ -151,8 +151,80 @@ fun main() = runBlocking {
     log("账号解析失败项：$checksFailed")
     log("--- GitHub 同步自检 ---")
     checkSyncSerializerAndMerge()
+    log("--- 悬浮歌词自检 ---")
+    checkFloatingLyrics()
     log("累计失败项：$checksFailed")
     log("DONE")
+}
+
+/** 悬浮歌词的颜色解析、位置换算与尺寸计算。 */
+private fun checkFloatingLyrics() {
+    check(
+        "floating-color-parse",
+        moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.of("YELLOW") ==
+            moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.YELLOW &&
+            moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.of("unknown") ==
+            moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.WHITE,
+    )
+    check(
+        "floating-style-parse",
+        moe.ouom.neriplayer.desktop.ui.FloatingLyricRenderStyle.of("OUTLINE") ==
+            moe.ouom.neriplayer.desktop.ui.FloatingLyricRenderStyle.OUTLINE &&
+            moe.ouom.neriplayer.desktop.ui.FloatingLyricAlignment.of("LEFT") ==
+            moe.ouom.neriplayer.desktop.ui.FloatingLyricAlignment.LEFT,
+    )
+
+    val (x, y) = moe.ouom.neriplayer.desktop.ui.resolveFloatingPosition(
+        screenWidth = 1920,
+        screenHeight = 1080,
+        windowWidth = 900,
+        windowHeight = 120,
+        ratioX = 0.5f,
+        ratioY = 0.85f,
+    )
+    check("floating-position-center-bottom", x == 510 && y == 816, "x=$x y=$y")
+
+    val (clampedX, clampedY) = moe.ouom.neriplayer.desktop.ui.resolveFloatingPosition(
+        screenWidth = 1000,
+        screenHeight = 800,
+        windowWidth = 900,
+        windowHeight = 120,
+        ratioX = 1.6f,
+        ratioY = -0.5f,
+    )
+    check("floating-position-clamped", clampedX == 100 && clampedY == 0, "x=$clampedX y=$clampedY")
+
+    val (ratioX, ratioY) = moe.ouom.neriplayer.desktop.ui.resolveFloatingRatio(
+        screenWidth = 1920,
+        screenHeight = 1080,
+        windowWidth = 900,
+        windowHeight = 120,
+        x = 510,
+        y = 816,
+    )
+    check(
+        "floating-ratio-roundtrip",
+        kotlin.math.abs(ratioX - 0.5f) < 0.001f && kotlin.math.abs(ratioY - 0.85f) < 0.001f,
+        "ratioX=$ratioX ratioY=$ratioY",
+    )
+
+    val heightWithTranslation = moe.ouom.neriplayer.desktop.ui.floatingWindowHeightDp(
+        moe.ouom.neriplayer.desktop.core.AppSettings(
+            floatingLyricsFontSize = 30f,
+            floatingLyricsShowTranslation = true,
+        )
+    )
+    val heightWithoutTranslation = moe.ouom.neriplayer.desktop.ui.floatingWindowHeightDp(
+        moe.ouom.neriplayer.desktop.core.AppSettings(
+            floatingLyricsFontSize = 30f,
+            floatingLyricsShowTranslation = false,
+        )
+    )
+    check(
+        "floating-window-height",
+        heightWithTranslation > heightWithoutTranslation && heightWithoutTranslation >= 64f,
+        "with=$heightWithTranslation without=$heightWithoutTranslation",
+    )
 }
 
 /** 同步通道序列化与合并策略的离线自检。 */

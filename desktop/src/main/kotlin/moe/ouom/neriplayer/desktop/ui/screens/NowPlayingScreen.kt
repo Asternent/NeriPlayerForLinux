@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -582,6 +583,21 @@ private fun PlayerCore(
             }
             IconButton(onClick = onOpenEffects) {
                 Icon(Icons.Outlined.GraphicEq, contentDescription = "音效与倍速")
+            }
+            IconButton(onClick = {
+                val enabled = !settings.floatingLyricsEnabled
+                container.settings.update { it.copy(floatingLyricsEnabled = enabled) }
+                showMessage(if (enabled) "已开启悬浮歌词（Ctrl+L 可快速切换）" else "已关闭悬浮歌词")
+            }) {
+                Icon(
+                    imageVector = Icons.Outlined.Subtitles,
+                    contentDescription = "悬浮歌词",
+                    tint = if (settings.floatingLyricsEnabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
             }
             if (showLyricsShortcut) {
                 IconButton(onClick = onToggleLyrics) {

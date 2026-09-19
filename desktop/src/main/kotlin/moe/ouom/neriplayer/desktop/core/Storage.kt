@@ -113,6 +113,34 @@ data class AppSettings(
     val cacheLimitMb: Int = 1024,
     val onboardingAccepted: Boolean = false,
     val exploreSearchHistory: List<String> = emptyList(),
+
+    // ---------------------------------------------------------------- 悬浮歌词
+    val floatingLyricsEnabled: Boolean = false,
+    /** 主窗口获得焦点时隐藏悬浮歌词，避免遮挡应用页面。 */
+    val floatingLyricsHideInApp: Boolean = false,
+    /** 锁定位置后不可拖动。 */
+    val floatingLyricsLocked: Boolean = false,
+    val floatingLyricsTextColor: String = "WHITE",
+    /** SHADOW（阴影）或 OUTLINE（描边）。 */
+    val floatingLyricsRenderStyle: String = "SHADOW",
+    val floatingLyricsShadowColor: String = "BLACK",
+    val floatingLyricsOutlineColor: String = "BLACK",
+    val floatingLyricsFontSize: Float = 30f,
+    val floatingLyricsOutlineWidth: Float = 2.0f,
+    val floatingLyricsShadowBlur: Float = 6.0f,
+    val floatingLyricsLyricAlpha: Float = 1.0f,
+    val floatingLyricsTranslationAlpha: Float = 0.75f,
+    val floatingLyricsBackgroundAlpha: Float = 0.35f,
+    /** 悬浮窗底色（配合背景不透明度使用）。 */
+    val floatingLyricsBackgroundColor: String = "BLACK",
+    val floatingLyricsShowTranslation: Boolean = true,
+    val floatingLyricsRevealAnimation: Boolean = true,
+    val floatingLyricsMaxWidthDp: Float = 900f,
+    /** LEFT / CENTER / RIGHT */
+    val floatingLyricsAlignment: String = "CENTER",
+    /** 位置用屏幕比例表示，支持多分辨率与多屏。 */
+    val floatingLyricsPositionX: Float = 0.5f,
+    val floatingLyricsPositionY: Float = 0.85f,
 )
 
 /** 设置仓库：内存 StateFlow + JSON 持久化。 */
