@@ -235,6 +235,7 @@ private suspend fun checkDownloads(online: moe.ouom.neriplayer.desktop.net.Onlin
         catalog = catalog,
         scope = scope,
         directoryOverride = tempDir,
+        lyricsProvider = { song -> online.lyrics(song)?.first },
     )
     val candidates = online.search(
         moe.ouom.neriplayer.desktop.core.MediaSource.NETEASE,
@@ -276,6 +277,40 @@ private suspend fun checkDownloads(online: moe.ouom.neriplayer.desktop.net.Onlin
             manager.enqueue(listOf(target)) == 0,
             "重复入队应被跳过",
         )
+
+        // 元数据：内嵌标签、内嵌封面、封面 sidecar、歌词 sidecar
+        val downloadedFile = entry?.let { java.io.File(it.filePath) }
+        if (downloadedFile != null && downloadedFile.isFile) {
+            val audio = runCatching { org.jaudiotagger.audio.AudioFileIO.read(downloadedFile) }.getOrNull()
+            check(
+                "download-tag-title",
+                audio?.tag?.getFirst(org.jaudiotagger.tag.FieldKey.TITLE) == target.displayName(),
+                "title=${audio?.tag?.getFirst(org.jaudiotagger.tag.FieldKey.TITLE)}",
+            )
+            check(
+                "download-tag-artist",
+                audio?.tag?.getFirst(org.jaudiotagger.tag.FieldKey.ARTIST) == target.artist,
+                "artist=${audio?.tag?.getFirst(org.jaudiotagger.tag.FieldKey.ARTIST)}",
+            )
+            val embedded = runCatching { audio?.tag?.firstArtwork?.binaryData }.getOrNull()
+            check(
+                "download-embedded-cover",
+                embedded != null && embedded.isNotEmpty(),
+                "bytes=${embedded?.size ?: 0}",
+            )
+            val coverFile = entry.artworkPath?.let { java.io.File(it) }
+            check(
+                "download-cover-sidecar",
+                coverFile != null && coverFile.isFile && coverFile.length() > 1024,
+                "file=${coverFile?.name} size=${coverFile?.length()}",
+            )
+            val lyricFile = entry.lyricsPath?.let { java.io.File(it) }
+            check(
+                "download-lyrics-sidecar",
+                lyricFile != null && lyricFile.isFile && lyricFile.readText().contains("["),
+                "file=${lyricFile?.name} size=${lyricFile?.length()}",
+            )
+        }
     }
     scope.coroutineContext.cancelChildren()
     tempDir.deleteRecursively()

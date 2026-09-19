@@ -22,6 +22,10 @@ data class DownloadedSong(
     val album: String = "",
     val durationMs: Long = 0L,
     val artworkUrl: String? = null,
+    /** 下载时保存到本地的封面文件（离线可用）。 */
+    val artworkPath: String? = null,
+    /** 下载时保存到本地的歌词文件。 */
+    val lyricsPath: String? = null,
     val source: String = MediaSource.LOCAL.name,
     val sizeBytes: Long = 0L,
     val downloadedAt: Long = 0L,
@@ -35,6 +39,7 @@ data class DownloadedSong(
         album = album,
         durationMs = durationMs,
         filePath = filePath,
+        artworkPath = artworkPath,
         artworkUrl = artworkUrl,
         dateAdded = downloadedAt,
     )
@@ -105,6 +110,8 @@ class DownloadManager(
     private val catalog: DownloadCatalog,
     private val scope: CoroutineScope,
     private val directoryOverride: File? = null,
+    /** 下载时一并保存歌词文件（来自歌词仓库）。 */
+    private val lyricsProvider: suspend (Song) -> String? = { null },
 ) {
 
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
@@ -267,6 +274,34 @@ class DownloadManager(
             return
         }
 
+        // 元数据：封面 sidecar + 歌词 sidecar + 写入内嵌标签（与手机端一致）
+        val coverBytes = fetchCoverBytes(song)
+        val coverFile = coverBytes?.let { bytes ->
+            runCatching {
+                val (extension, _) = detectImageType(bytes)
+                File(target.parentFile, "${target.nameWithoutExtension}.$extension").apply { writeBytes(bytes) }
+            }.getOrNull()
+        }
+        val lyricText = runCatching { lyricsProvider(song) }.getOrNull()?.takeIf { it.isNotBlank() }
+        val lyricFile = lyricText?.let { text ->
+            runCatching {
+                File(target.parentFile, "${target.nameWithoutExtension}.lrc").apply { writeText(text) }
+            }.getOrNull()
+        }
+        val metadata = DownloadMetadataWriter.write(
+            file = target,
+            title = song.displayName(),
+            artist = song.artist,
+            album = song.album,
+            lyrics = lyricText,
+            coverBytes = coverBytes,
+            coverMimeType = coverBytes?.let(::imageMimeType),
+        )
+        println(
+            "[download] 元数据写入：标签=${metadata.propertyWritten} 内嵌封面=${metadata.coverWritten} " +
+                "歌词=${metadata.lyricWritten} 封面文件=${coverFile?.name ?: "无"}"
+        )
+
         val size = target.length()
         catalog.record(
             DownloadedSong(
@@ -277,6 +312,8 @@ class DownloadManager(
                 album = song.album,
                 durationMs = song.durationMs,
                 artworkUrl = song.artworkUrl,
+                artworkPath = coverFile?.absolutePath,
+                lyricsPath = lyricFile?.absolutePath,
                 source = song.source.name,
                 sizeBytes = size,
                 downloadedAt = System.currentTimeMillis(),
@@ -314,6 +351,18 @@ class DownloadManager(
         val fromUrl = url.substringBefore('?').substringAfterLast('.', "")
         val candidate = fromUrl.takeIf { it.length in 2..4 && it.all(Char::isLetterOrDigit) }
         return candidate?.lowercase() ?: "mp3"
+    }
+
+    /** 抓取封面字节；不同平台用各自的 Referer，失败不影响音频下载。 */
+    private fun fetchCoverBytes(song: Song): ByteArray? {
+        val url = song.artworkUrl?.takeIf { it.isNotBlank() } ?: return null
+        val referer = when (song.source) {
+            MediaSource.BILIBILI -> "https://www.bilibili.com/"
+            else -> "https://music.163.com/"
+        }
+        val bytes = online.httpService.download(url, mapOf("Referer" to referer)) ?: return null
+        // 封面通常几十 KB，超过 6MB 视为异常数据
+        return bytes.takeIf { it.size in 1..(6 * 1024 * 1024) }
     }
 }
 

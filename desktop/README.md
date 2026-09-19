@@ -13,7 +13,7 @@
 从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
 
 ```bash
-sudo dpkg -i neriplayer_1.3.0-1_amd64.deb
+sudo dpkg -i neriplayer_1.3.1-1_amd64.deb
 neriplayer          # 或从应用菜单启动「NeriPlayer」
 ```
 
@@ -120,6 +120,12 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 - 下载管理面板：进度条、取消、重试、清空已完成、打开下载目录；媒体库顶栏有下载入口（带进行中数量角标）
 - 已下载歌曲在列表中显示离线标记，播放时**优先使用本地文件**，断网也能放
 - 设置 → 下载：下载目录（可选）、并发数（1–4）、下载音质（标准 / 较高 / 极高 / 无损）、占用统计与失效记录清理
+
+下载完成时会一并写入元数据，与手机端行为一致：
+
+- 把标题 / 艺术家 / 专辑 / 歌词写进音频**内嵌标签**，其它播放器也能看到完整信息
+- 封面**内嵌进音频文件**，同时保存为同名 sidecar 图片（`歌手 - 标题.jpg` / `.png` / `.webp`）
+- 歌词保存为同名 `.lrc`（本地歌词优先级链路可以直接读取，离线也能看歌词）
 
 ## 数据目录（XDG）
 

@@ -29,6 +29,7 @@ class AppContainer {
         settings = settings,
         catalog = downloadCatalog,
         scope = scope,
+        lyricsProvider = { song -> lyrics.load(song).raw.takeIf { it.isNotBlank() } },
     )
     val sync = GitHubSyncManager(
         configStore = syncConfig,
