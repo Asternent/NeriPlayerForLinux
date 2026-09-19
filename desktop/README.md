@@ -13,7 +13,7 @@
 从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
 
 ```bash
-sudo dpkg -i neriplayer_1.3.1-1_amd64.deb
+sudo dpkg -i neriplayer_1.3.2-1_amd64.deb
 neriplayer          # 或从应用菜单启动「NeriPlayer」
 ```
 
@@ -126,6 +126,7 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 - 把标题 / 艺术家 / 专辑 / 歌词写进音频**内嵌标签**，其它播放器也能看到完整信息
 - 封面**内嵌进音频文件**，同时保存为同名 sidecar 图片（`歌手 - 标题.jpg` / `.png` / `.webp`）
 - 歌词保存为同名 `.lrc`（本地歌词优先级链路可以直接读取，离线也能看歌词）
+- 下载管理面板提供 **「补齐标签」**：为旧版本下载（或缺标签）的文件补写封面与歌曲信息，无需重新下载
 
 ## 数据目录（XDG）
 

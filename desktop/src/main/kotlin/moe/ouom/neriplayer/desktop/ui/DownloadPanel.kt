@@ -25,12 +25,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.core.DownloadState
+import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.io.File
 
@@ -48,6 +50,7 @@ fun DownloadPanel(
     val downloaded by container.downloadCatalog.items.collectAsState()
     val directory = container.downloads.downloadDirectory()
     val active = tasks.count { it.state == DownloadState.QUEUED || it.state == DownloadState.RUNNING }
+    val scope = rememberCoroutineScope()
 
     OverlayPanel(
         title = if (active > 0) "下载管理（进行中 $active）" else "下载管理",
@@ -76,6 +79,12 @@ fun DownloadPanel(
                 Spacer(Modifier.width(4.dp))
                 Text("打开目录")
             }
+            TextButton(onClick = {
+                scope.launch {
+                    val count = container.downloads.repairMetadata()
+                    showMessage("已为 $count 首已下载歌曲补齐封面与标签")
+                }
+            }) { Text("补齐标签") }
         }
 
         if (tasks.isEmpty()) {

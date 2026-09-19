@@ -274,7 +274,45 @@ class DownloadManager(
             return
         }
 
-        // 元数据：封面 sidecar + 歌词 sidecar + 写入内嵌标签（与手机端一致）
+        val metadata = writeMetadata(target, song)
+        println(
+            "[download] 元数据写入：标签=${metadata.tags.propertyWritten} 内嵌封面=${metadata.tags.coverWritten} " +
+                "歌词=${metadata.tags.lyricWritten} 封面文件=${metadata.coverFile?.name ?: "无"}"
+        )
+
+        val size = target.length()
+        catalog.record(
+            DownloadedSong(
+                songKey = song.key,
+                filePath = target.absolutePath,
+                title = song.displayName(),
+                artist = song.artist,
+                album = song.album,
+                durationMs = song.durationMs,
+                artworkUrl = song.artworkUrl,
+                artworkPath = metadata.coverFile?.absolutePath,
+                lyricsPath = metadata.lyricFile?.absolutePath,
+                source = song.source.name,
+                sizeBytes = size,
+                downloadedAt = System.currentTimeMillis(),
+            )
+        )
+        _tasks.value = _tasks.value.map {
+            if (it.id == task.id) {
+                it.copy(state = DownloadState.DONE, filePath = target.absolutePath, downloadedBytes = size, totalBytes = size)
+            } else {
+                it
+            }
+        }
+        updateActiveCount()
+        println("[download] 完成：${song.displayName()} → ${target.absolutePath} (${size / 1024} KB)")
+    }
+
+    /**
+     * 写入封面 / 歌词 / 内嵌标签。
+     * 下载完成时调用，也可用于为旧版本下载的文件补齐信息（不重新下载音频）。
+     */
+    private suspend fun writeMetadata(target: File, song: Song): MetadataOutcome {
         val coverBytes = fetchCoverBytes(song)
         val coverFile = coverBytes?.let { bytes ->
             runCatching {
@@ -297,37 +335,32 @@ class DownloadManager(
             coverBytes = coverBytes,
             coverMimeType = coverBytes?.let(::imageMimeType),
         )
-        println(
-            "[download] 元数据写入：标签=${metadata.propertyWritten} 内嵌封面=${metadata.coverWritten} " +
-                "歌词=${metadata.lyricWritten} 封面文件=${coverFile?.name ?: "无"}"
-        )
+        return MetadataOutcome(metadata, coverFile, lyricFile, lyricText)
+    }
 
-        val size = target.length()
-        catalog.record(
-            DownloadedSong(
-                songKey = song.key,
-                filePath = target.absolutePath,
-                title = song.displayName(),
-                artist = song.artist,
-                album = song.album,
-                durationMs = song.durationMs,
-                artworkUrl = song.artworkUrl,
-                artworkPath = coverFile?.absolutePath,
-                lyricsPath = lyricFile?.absolutePath,
-                source = song.source.name,
-                sizeBytes = size,
-                downloadedAt = System.currentTimeMillis(),
+    /**
+     * 为已下载的文件补齐封面与标签（对应旧版本下载的文件，或标签被清空的情况）。
+     * @return 成功处理的条目数
+     */
+    suspend fun repairMetadata(): Int {
+        val entries = catalog.items.value.values.toList()
+        var repaired = 0
+        entries.forEach { entry ->
+            val file = File(entry.filePath)
+            if (!file.isFile) return@forEach
+            val song = entry.toSong()
+            val outcome = writeMetadata(file, song)
+            catalog.record(
+                entry.copy(
+                    artworkPath = outcome.coverFile?.absolutePath ?: entry.artworkPath,
+                    lyricsPath = outcome.lyricFile?.absolutePath ?: entry.lyricsPath,
+                    sizeBytes = file.length(),
+                )
             )
-        )
-        _tasks.value = _tasks.value.map {
-            if (it.id == task.id) {
-                it.copy(state = DownloadState.DONE, filePath = target.absolutePath, downloadedBytes = size, totalBytes = size)
-            } else {
-                it
-            }
+            repaired += 1
+            println("[download] 补齐元数据：${file.name} 标签=${outcome.tags.propertyWritten} 封面=${outcome.tags.coverWritten}")
         }
-        updateActiveCount()
-        println("[download] 完成：${song.displayName()} → ${target.absolutePath} (${size / 1024} KB)")
+        return repaired
     }
 
     private fun fail(taskId: String, message: String) {
@@ -377,3 +410,11 @@ fun sanitizeFileName(name: String): String {
 
 /** 内部用：下载被用户取消。 */
 internal class DownloadCanceledException : RuntimeException("download canceled")
+
+/** 元数据写入结果（内嵌标签 / 封面文件 / 歌词文件）。 */
+private data class MetadataOutcome(
+    val tags: DownloadMetadataWriter.Result,
+    val coverFile: File?,
+    val lyricFile: File?,
+    val lyricText: String?,
+)

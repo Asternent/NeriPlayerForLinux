@@ -310,6 +310,35 @@ private suspend fun checkDownloads(online: moe.ouom.neriplayer.desktop.net.Onlin
                 lyricFile != null && lyricFile.isFile && lyricFile.readText().contains("["),
                 "file=${lyricFile?.name} size=${lyricFile?.length()}",
             )
+
+            // 模拟「旧版本下载的文件」：清空标签与内嵌封面后，用「补齐标签」恢复
+            val stripped = runCatching {
+                val audio = org.jaudiotagger.audio.AudioFileIO.read(downloadedFile)
+                val tag = audio.tag
+                tag?.deleteField(org.jaudiotagger.tag.FieldKey.TITLE)
+                tag?.deleteField(org.jaudiotagger.tag.FieldKey.ARTIST)
+                tag?.deleteArtworkField()
+                audio.commit()
+                org.jaudiotagger.audio.AudioFileIO.read(downloadedFile)
+                    .tag?.getFirst(org.jaudiotagger.tag.FieldKey.TITLE)
+                    .isNullOrBlank()
+            }.getOrDefault(false)
+            check("download-repair-stripped", stripped, "清空标签后应为空")
+            val repaired = kotlinx.coroutines.runBlocking { manager.repairMetadata() }
+            val afterRepair = runCatching {
+                org.jaudiotagger.audio.AudioFileIO.read(downloadedFile)
+            }.getOrNull()
+            check("download-repair-count", repaired >= 1, "repaired=$repaired")
+            check(
+                "download-repair-tag",
+                afterRepair?.tag?.getFirst(org.jaudiotagger.tag.FieldKey.TITLE) == target.displayName(),
+                "title=${afterRepair?.tag?.getFirst(org.jaudiotagger.tag.FieldKey.TITLE)}",
+            )
+            check(
+                "download-repair-cover",
+                afterRepair?.tag?.firstArtwork?.binaryData?.isNotEmpty() == true,
+                "bytes=${afterRepair?.tag?.firstArtwork?.binaryData?.size ?: 0}",
+            )
         }
     }
     scope.coroutineContext.cancelChildren()
