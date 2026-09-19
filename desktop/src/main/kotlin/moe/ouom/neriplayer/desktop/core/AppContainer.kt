@@ -6,6 +6,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.ouom.neriplayer.desktop.net.OnlineRepository
 import moe.ouom.neriplayer.desktop.sync.GitHubSyncManager
 import moe.ouom.neriplayer.desktop.sync.SyncConfigStore
@@ -30,6 +32,30 @@ class AppContainer {
         catalog = downloadCatalog,
         scope = scope,
         lyricsProvider = { song -> lyrics.load(song).raw.takeIf { it.isNotBlank() } },
+    )
+    val mpris = MprisService(
+        snapshotProvider = {
+            buildNowPlayingSnapshot(
+                song = player.currentSong.value,
+                durationMs = player.durationMs.value,
+                positionMs = player.positionMs.value,
+                playing = player.state.value == PlaybackState.PLAYING,
+            )
+        },
+        onPlayPause = { player.togglePlayPause() },
+        onPlay = { player.play() },
+        onPause = { player.pause() },
+        onNext = { player.next() },
+        onPrevious = { player.previous() },
+        onStop = { player.pause() },
+        onSeekBy = { deltaMs -> player.seekTo(player.positionMs.value + deltaMs) },
+        onSeekTo = { positionMs -> player.seekTo(positionMs) },
+        volumeProvider = { player.volume.value.toDouble() },
+        onVolumeChange = { player.setVolume(it.toFloat()) },
+        shuffleProvider = { player.shuffle.value },
+        onShuffleChange = { player.setShuffle(it) },
+        repeatProvider = { player.repeatMode.value },
+        onRepeatChange = { player.setRepeatMode(it) },
     )
     val sync = GitHubSyncManager(
         configStore = syncConfig,
@@ -63,12 +89,42 @@ class AppContainer {
         player.restoreLastQueue()
         scope.launch(Dispatchers.IO) { refreshAccountProfiles() }
         observeLocalChangesForAutoSync()
+        startMprisBridge()
         if (scanLibrary) {
             scope.launch { library.scan() }
         }
     }
 
     private var localRevision = 0L
+
+    /** 播放状态变化时同步给 MPRIS；并按设置启停服务。 */
+    private fun startMprisBridge() {
+        scope.launch {
+            combine(
+                player.currentSong,
+                player.state,
+                player.volume,
+                player.shuffle,
+                player.repeatMode,
+            ) { song, state, volume, shuffle, repeat ->
+                listOf(song?.key, state, volume, shuffle, repeat).joinToString("|")
+            }.collect {
+                if (mpris.running) mpris.refresh()
+            }
+        }
+        scope.launch {
+            settings.state
+                .map { it.mprisEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    if (enabled) {
+                        mpris.start()
+                    } else {
+                        mpris.stop()
+                    }
+                }
+        }
+    }
 
     /** 本地歌单 / 历史 / 统计变化后，若开启了自动同步则静默同步一次。 */
     private fun observeLocalChangesForAutoSync() {

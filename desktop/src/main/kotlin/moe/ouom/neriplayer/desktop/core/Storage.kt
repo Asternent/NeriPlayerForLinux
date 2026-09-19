@@ -149,6 +149,18 @@ data class AppSettings(
     val downloadQuality: String = "exhigh",
     val downloadConcurrency: Int = 2,
     val downloadNotifyOnComplete: Boolean = true,
+
+    // ---------------------------------------------------------------- 后台与系统控制
+    /** 关闭窗口时最小化到托盘继续后台播放。 */
+    val closeToTray: Boolean = true,
+    /** 最小化时隐藏到托盘。 */
+    val minimizeToTray: Boolean = true,
+    /** 歌曲变化时发送系统通知（窗口隐藏时）。 */
+    val notifyOnSongChange: Boolean = true,
+    /** 注册 MPRIS，使系统媒体键 / 桌面媒体组件可以控制播放。 */
+    val mprisEnabled: Boolean = true,
+    /** 是否已经提示过「已最小化到托盘」。 */
+    val trayHintShown: Boolean = false,
 )
 
 /** 设置仓库：内存 StateFlow + JSON 持久化。 */

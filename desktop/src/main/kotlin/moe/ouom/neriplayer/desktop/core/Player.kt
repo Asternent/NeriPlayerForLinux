@@ -371,6 +371,15 @@ class PlayerManager(
         rebuildShuffleOrder(_currentIndex.value)
     }
 
+    fun setShuffle(enabled: Boolean) {
+        if (_shuffle.value == enabled) return
+        toggleShuffle()
+    }
+
+    fun setRepeatMode(mode: RepeatMode) {
+        _repeatMode.value = mode
+    }
+
     fun cycleRepeatMode() {
         _repeatMode.value = when (_repeatMode.value) {
             RepeatMode.OFF -> RepeatMode.ALL

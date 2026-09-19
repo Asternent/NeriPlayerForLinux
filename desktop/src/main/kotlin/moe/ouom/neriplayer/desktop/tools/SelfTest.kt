@@ -199,8 +199,46 @@ fun main() = runBlocking {
     checkLocateCurrent()
     log("--- 下载自检 ---")
     checkDownloads(online)
+    log("--- 后台与系统控制自检 ---")
+    checkBackground()
     log("累计失败项：$checksFailed")
     log("DONE")
+}
+
+/** 后台播放信息快照（MPRIS / 托盘 / 通知共用）。 */
+private fun checkBackground() {
+    val song = moe.ouom.neriplayer.desktop.core.Song(
+        key = "netease:123",
+        source = moe.ouom.neriplayer.desktop.core.MediaSource.NETEASE,
+        title = "测试歌曲",
+        artist = "测试歌手",
+        album = "测试专辑",
+        durationMs = 210_000L,
+        artworkUrl = "https://p1.music.126.net/x.jpg",
+    )
+    val snapshot = moe.ouom.neriplayer.desktop.core.buildNowPlayingSnapshot(
+        song = song,
+        durationMs = 210_000L,
+        positionMs = 12_000L,
+        playing = true,
+    )
+    check(
+        "background-snapshot-fields",
+        snapshot != null &&
+            snapshot.title == "测试歌曲" &&
+            snapshot.artist == "测试歌手" &&
+            snapshot.album == "测试专辑" &&
+            snapshot.durationMs == 210_000L &&
+            snapshot.positionMs == 12_000L &&
+            snapshot.playing &&
+            snapshot.artUrl == "https://p1.music.126.net/x.jpg" &&
+            snapshot.source == "netease",
+        "snapshot=$snapshot",
+    )
+    check(
+        "background-snapshot-empty",
+        moe.ouom.neriplayer.desktop.core.buildNowPlayingSnapshot(null, 0L, 0L, false) == null,
+    )
 }
 
 /** 下载：文件名清理、记录读写，以及一次真实的在线歌曲下载。 */

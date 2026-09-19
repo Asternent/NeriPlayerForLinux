@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "moe.ouom.neriplayer"
-version = "1.3.2"
+version = "1.4.0"
 
 kotlin {
     jvmToolchain(17)
@@ -28,6 +28,9 @@ dependencies {
     implementation("org.jflac:jflac-codec:1.5.2")
     // 扫码登录需要在应用内渲染二维码
     implementation("com.google.zxing:core:3.5.3")
+    // 系统媒体控制（MPRIS over D-Bus），对应手机端的通知栏/媒体键控制
+    implementation("com.github.hypfvieh:dbus-java-core:5.2.1")
+    implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.2.1")
 }
 
 compose.desktop {
@@ -37,7 +40,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb)
             packageName = "NeriPlayer"
-            packageVersion = "1.3.2"
+            packageVersion = "1.4.0"
             description = "NeriPlayer 音理音理 — Linux 原生 Compose Desktop 音乐播放器"
             vendor = "NeriPlayer Desktop"
             copyright = "GPL-3.0-only"
