@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -43,6 +44,20 @@ import moe.ouom.neriplayer.desktop.tools.runUiScript
 
 @Composable
 fun NeriApp(container: AppContainer) {
+    NeriThemeForSettings(container) {
+        AppScaffold(container)
+    }
+}
+
+/**
+ * 按当前设置（深浅色 / 动态取色 / 调色风格）套用应用主题。
+ * 主窗口与悬浮窗、后台控制面板等独立窗口共用，保证多个窗口的配色一致。
+ */
+@Composable
+fun NeriThemeForSettings(
+    container: AppContainer,
+    content: @Composable () -> Unit,
+) {
     val settings by container.settings.state.collectAsState()
     val coverSeed by container.player.coverSeedColor.collectAsState()
     val systemDark = isSystemInDarkTheme()
@@ -61,9 +76,8 @@ fun NeriApp(container: AppContainer) {
         isDark = isDark,
         paletteStyle = settings.paletteStyle,
         colorSpec = settings.colorSpec,
-    ) {
-        AppScaffold(container)
-    }
+        content = content,
+    )
 }
 
 @Composable
@@ -86,6 +100,19 @@ private fun AppScaffold(container: AppContainer) {
     LaunchedEffect(Unit) {
         container.player.messages.collect { message ->
             snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    // 把「打开设置 / 打开下载管理」暴露给后台控制面板与托盘
+    DisposableEffect(Unit) {
+        AppIntents.openSettings = {
+            backStack.clear()
+            backStack.add(Screen.Tab(MainTab.SETTINGS))
+        }
+        AppIntents.openDownloads = { showDownloadPanel = true }
+        onDispose {
+            AppIntents.openSettings = null
+            AppIntents.openDownloads = null
         }
     }
 

@@ -332,6 +332,28 @@ suspend fun runUiScript(
                 }
             }
             "downloads-panel" -> host.openDownloadPanel()
+            "tray-panel" -> {
+                // 弹出后台控制面板（托盘左键 / 右键都走这个入口）
+                val toggle = moe.ouom.neriplayer.desktop.ui.AppIntents.toggleTrayPanel
+                if (toggle == null) {
+                    host.log("FAIL tray-panel：后台控制面板未注册")
+                    ok = false
+                } else {
+                    toggle()
+                    host.log("tray-panel 已弹出后台控制面板")
+                }
+            }
+            "tray-panel-settings" -> {
+                // 通过控制面板的「设置」入口跳转，验证应用级动作注册成功
+                val open = moe.ouom.neriplayer.desktop.ui.AppIntents.openSettings
+                if (open == null) {
+                    host.log("FAIL tray-panel-settings：设置入口未注册")
+                    ok = false
+                } else {
+                    open()
+                    host.log("tray-panel-settings 已跳转到设置页")
+                }
+            }
             "download-current" -> {
                 val song = container.player.currentSong.value
                 if (song == null) {

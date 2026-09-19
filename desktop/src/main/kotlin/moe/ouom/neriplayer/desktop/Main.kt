@@ -19,18 +19,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.ui.NeriApp
 import moe.ouom.neriplayer.desktop.ui.FloatingLyricsWindow
 import moe.ouom.neriplayer.desktop.ui.AppTray
 import moe.ouom.neriplayer.desktop.ui.SongChangeNotifier
+import moe.ouom.neriplayer.desktop.ui.DesktopTray
 import moe.ouom.neriplayer.desktop.ui.isTrayAvailable
+import moe.ouom.neriplayer.desktop.ui.AppIntents
+import moe.ouom.neriplayer.desktop.ui.TrayControlPanel
+import moe.ouom.neriplayer.desktop.ui.setupDesktopLookAndFeel
 import moe.ouom.neriplayer.desktop.core.PlaybackState
 import kotlinx.coroutines.delay
 
 fun main() {
+    setupDesktopLookAndFeel()
     val container = AppContainer()
     container.bootstrap()
     application {
@@ -38,7 +42,7 @@ fun main() {
         var mainWindowFocused by remember { mutableStateOf(true) }
         var windowVisible by remember { mutableStateOf(true) }
         val traySupported = remember { isTrayAvailable() }
-        val trayState = rememberTrayState()
+        var trayPanelVisible by remember { mutableStateOf(false) }
         val currentSong by container.player.currentSong.collectAsState()
         val playbackState by container.player.state.collectAsState()
         // 允许通过环境变量覆盖初始窗口尺寸（便于截图与多屏使用）
@@ -58,14 +62,10 @@ fun main() {
                     windowVisible = false
                     if (!settings.trayHintShown) {
                         container.settings.update { it.copy(trayHintShown = true) }
-                        runCatching {
-                            trayState.sendNotification(
-                                androidx.compose.ui.window.Notification(
-                                    title = "NeriPlayer 仍在后台运行",
-                                    message = "音乐不会中断，点击托盘图标可以重新打开窗口",
-                                )
-                            )
-                        }
+                        DesktopTray.notify(
+                            "NeriPlayer 仍在后台运行",
+                            "音乐不会中断，点击托盘图标可以打开控制面板",
+                        )
                     }
                 } else {
                     container.player.persistQueueState()
@@ -101,25 +101,42 @@ fun main() {
         if (traySupported) {
             AppTray(
                 container = container,
-                trayState = trayState,
-                onShowWindow = {
-                    windowVisible = true
-                    windowState.isMinimized = false
-                },
-                onQuit = {
-                    container.player.persistQueueState()
-                    exitApplication()
-                },
+                onActivate = { trayPanelVisible = !trayPanelVisible },
             )
             SongChangeNotifier(
                 container = container,
-                trayState = trayState,
                 windowVisible = { windowVisible },
             )
+        } else {
+            LaunchedEffect(Unit) {
+                println("[tray] 当前桌面环境没有系统托盘，托盘常驻不可用（MPRIS 仍可控制播放）")
+            }
         }
+
+        // 应用主题风格的后台控制面板（左键点托盘图标弹出）
+        TrayControlPanel(
+            container = container,
+            visible = trayPanelVisible,
+            onDismiss = { trayPanelVisible = false },
+            onShowWindow = {
+                windowVisible = true
+                windowState.isMinimized = false
+            },
+        )
 
         // 系统媒体控制（MPRIS）：桌面媒体组件 / 媒体键 / playerctl 可以直接控制播放
         DisposableEffect(Unit) {
+            AppIntents.showMainWindow = {
+                windowVisible = true
+                windowState.isMinimized = false
+            }
+            AppIntents.quit = {
+                container.player.persistQueueState()
+                exitApplication()
+            }
+            AppIntents.toggleTrayPanel = {
+                trayPanelVisible = !trayPanelVisible
+            }
             container.mpris.onRaise = {
                 windowVisible = true
                 windowState.isMinimized = false
@@ -129,6 +146,9 @@ fun main() {
                 exitApplication()
             }
             onDispose {
+                AppIntents.showMainWindow = null
+                AppIntents.quit = null
+                AppIntents.toggleTrayPanel = null
                 container.mpris.onRaise = null
                 container.mpris.onQuit = null
             }

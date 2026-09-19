@@ -13,7 +13,7 @@
 从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
 
 ```bash
-sudo dpkg -i neriplayer_1.4.0-1_amd64.deb
+sudo dpkg -i neriplayer_1.4.1-1_amd64.deb
 neriplayer          # 或从应用菜单启动「NeriPlayer」
 ```
 
@@ -31,6 +31,7 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 歌词页：逐行高亮与翻译 <br> ![歌词](docs/screenshots/lyrics.png) | 播放队列：排序 / 移除 / 跳转 <br> ![队列](docs/screenshots/queue.png) |
 | 悬浮歌词（描边样式，可拖动定位） <br> ![悬浮歌词](docs/screenshots/floating-lyrics.png) | 哔哩哔哩收藏夹 <br> ![B站收藏夹](docs/screenshots/bilibili-favorites.png) |
 | 设置 → 账号：网易云 / 哔哩哔哩扫码登录 <br> ![账号](docs/screenshots/settings.png) | 设置 → 同步：GitHub 跨设备同步 <br> ![同步](docs/screenshots/github-sync.png) |
+| 托盘控制面板：封面、进度、传输控制与音量 <br> ![托盘面板](docs/screenshots/tray-panel.png) | 同一面板的深色主题 <br> ![托盘面板深色](docs/screenshots/tray-panel-dark.png) |
 
 ## 功能清单
 
@@ -53,7 +54,7 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 与手机端同步协议互通 | ✅ 同一仓库、同一文件格式（JSON 与省流二进制） |
 | 定位到正在播放 | ✅ 列表高亮当前歌曲（播放指示器）+ 一键滚动定位并闪烁提示 |
 | 歌曲下载到本地 | ✅ 单曲 / 批量下载、进度与取消重试、离线播放、下载分栏与管理面板 |
-| 后台常驻与系统控制 | ✅ 托盘常驻后台播放 + 托盘菜单控制 + 系统媒体控制（MPRIS，媒体键 / 桌面媒体组件 / playerctl） |
+| 后台常驻与系统控制 | ✅ 托盘常驻后台播放 + 主题化托盘控制面板 + 系统媒体控制（MPRIS，媒体键 / 桌面媒体组件 / playerctl） |
 
 ### 与原 Android 应用的差异
 
@@ -133,13 +134,18 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 
 对应手机端的「前台服务 + 通知栏控制」，桌面端用**系统托盘**与**MPRIS**实现：
 
-- **关闭窗口 = 最小化到托盘**（默认开启）：窗口隐藏后音乐继续播放，托盘菜单可重新打开或退出；
+- **关闭窗口 = 最小化到托盘**（默认开启）：窗口隐藏后音乐继续播放，控制面板可重新打开或退出；
   最小化窗口同样会收进托盘（可在设置里关掉这两种行为）
-- **托盘菜单**：显示主窗口 / 上一首 / 播放暂停 / 下一首 / 开关悬浮歌词 / 退出；鼠标悬停显示「正在播放：歌曲 - 歌手」
+- **托盘控制面板**：点击托盘图标弹出**应用主题风格的自绘面板**——封面、歌曲信息、队列位置、进度条、
+  上一首 / 播放暂停 / 下一首、音量滑杆，以及显示主窗口 / 悬浮歌词开关 / 下载管理 / 设置 / 退出；
+  跟随深浅色与动态取色主题，失去焦点或按 `Esc` 自动收起；鼠标悬停托盘图标显示「正在播放：歌曲 - 歌手」
 - **系统媒体控制（MPRIS）**：注册 `org.mpris.MediaPlayer2.neriplayer`，键盘媒体键、GNOME / KDE 媒体组件、
   `playerctl` 都能直接控制本应用（播放 / 暂停 / 上下曲 / 循环模式 / 随机 / 音量 / 跳转），并读取当前歌曲与封面
 - **歌曲变化通知**：窗口隐藏时发送系统通知（可在设置里关闭）
 - 窗口标题也会跟随显示「▶ 歌曲 - 歌手」，任务栏一眼可见
+
+> 托盘面板不使用原生的 AWT 弹出菜单（灰底、无图标、无法跟随主题），而是应用内绘制的窗口，
+> 因此配色与主界面完全一致。
 
 > 需要桌面环境提供托盘面板；极简环境（如裸 Xvfb）没有托盘时会自动退回普通窗口模式，不会崩溃。
 > MPRIS 需要 D-Bus 会话总线（GNOME / KDE / XFCE 默认提供），设置页会显示注册状态。

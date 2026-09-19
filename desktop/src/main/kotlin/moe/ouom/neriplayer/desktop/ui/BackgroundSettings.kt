@@ -55,7 +55,7 @@ fun BackgroundSettingsSection(
             SettingSwitchRow(
                 title = "关闭窗口时最小化到托盘",
                 description = if (trayAvailable) {
-                    "关闭窗口只是隐藏，音乐继续播放；从托盘菜单可重新打开或退出"
+                    "关闭窗口只是隐藏，音乐继续播放；点击托盘图标可打开控制面板"
                 } else {
                     "当前桌面环境没有系统托盘，关闭窗口将直接退出"
                 },
@@ -102,8 +102,8 @@ fun BackgroundSettingsSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "提示：托盘图标点击可显示窗口，右键菜单包含上一首 / 播放暂停 / 下一首 / 悬浮歌词 / 退出；" +
-                    "MPRIS 让键盘媒体键与 GNOME / KDE 媒体组件直接控制本应用。",
+                text = "提示：点击托盘图标会弹出应用主题风格的控制面板（封面、进度、上一首 / 播放暂停 / 下一首、" +
+                    "悬浮歌词、下载管理、设置与退出）；MPRIS 让键盘媒体键与 GNOME / KDE 媒体组件直接控制本应用。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
