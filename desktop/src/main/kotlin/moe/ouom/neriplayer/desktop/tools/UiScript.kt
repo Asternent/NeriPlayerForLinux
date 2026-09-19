@@ -46,6 +46,8 @@ suspend fun runUiScript(
     host: UiScriptHost,
 ): Boolean {
     var ok = true
+    var markedSongKey: String? = null
+    var markedQueueIndex: Int = -1
     for (command in parseUiScript(script)) {
         when (command.name) {
             "sleep" -> delay(command.argument.toLongOrNull() ?: 500L)
@@ -112,6 +114,53 @@ suspend fun runUiScript(
 
             "pause" -> container.player.pause()
             "resume" -> container.player.play()
+            "mark-song" -> {
+                markedSongKey = container.player.currentSong.value?.key
+                markedQueueIndex = container.player.currentIndex.value
+                host.log("mark-song key=$markedSongKey index=$markedQueueIndex")
+            }
+
+            "expect-same-song" -> {
+                val currentKey = container.player.currentSong.value?.key
+                val currentIndex = container.player.currentIndex.value
+                if (currentKey == markedSongKey && currentIndex == markedQueueIndex) {
+                    host.log("PASS expect-same-song key=$currentKey index=$currentIndex")
+                } else {
+                    host.log(
+                        "FAIL expect-same-song 期望 key=$markedSongKey index=$markedQueueIndex " +
+                            "实际 key=$currentKey index=$currentIndex"
+                    )
+                    ok = false
+                }
+            }
+
+            "expect-paused" -> {
+                val state = container.player.state.value
+                if (state == moe.ouom.neriplayer.desktop.core.PlaybackState.PAUSED) {
+                    host.log("PASS expect-paused position=${container.player.positionMs.value}ms")
+                } else {
+                    host.log("FAIL expect-paused 实际状态=$state")
+                    ok = false
+                }
+            }
+
+            "expect-song-changed" -> {
+                val currentKey = container.player.currentSong.value?.key
+                if (currentKey != null && currentKey != markedSongKey) {
+                    host.log("PASS expect-song-changed 已切到 key=$currentKey")
+                } else {
+                    host.log("FAIL expect-song-changed 仍停留在 key=$currentKey")
+                    ok = false
+                }
+            }
+
+            "expect-cover-key" -> {
+                // 便于人工核对：输出当前歌曲的封面来源，切歌后应随之变化
+                val song = container.player.currentSong.value
+                host.log(
+                    "cover-key song=${song?.key} artwork=${song?.artworkPath ?: song?.artworkUrl}"
+                )
+            }
             "next" -> container.player.next()
             "prev" -> container.player.previous()
             "seek" -> container.player.seekTo(command.argument.toLongOrNull() ?: 0L)

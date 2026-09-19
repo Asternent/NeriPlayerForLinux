@@ -32,21 +32,31 @@ import moe.ouom.neriplayer.desktop.core.Song
 import java.io.File
 
 private const val MAX_ARTWORK_ENTRIES = 180
+private const val ARTWORK_FAILURE_TTL_MS = 60_000L
 
 private object ArtworkCache {
     private val memory = object : LinkedHashMap<String, ImageBitmap>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>): Boolean =
             size > MAX_ARTWORK_ENTRIES
     }
-    private val failed = HashSet<String>()
+    private val failed = HashMap<String, Long>()
 
     fun get(key: String): ImageBitmap? = synchronized(memory) { memory[key] }
 
     fun put(key: String, bitmap: ImageBitmap) = synchronized(memory) { memory[key] = bitmap }
 
-    fun hasFailed(key: String): Boolean = synchronized(failed) { key in failed }
+    /** 失败记录带过期时间，网络抖动恢复后可以自动重试。 */
+    fun hasFailed(key: String): Boolean = synchronized(failed) {
+        val at = failed[key] ?: return false
+        if (System.currentTimeMillis() - at > ARTWORK_FAILURE_TTL_MS) {
+            failed.remove(key)
+            false
+        } else {
+            true
+        }
+    }
 
-    fun markFailed(key: String) = synchronized(failed) { failed += key }
+    fun markFailed(key: String) = synchronized(failed) { failed[key] = System.currentTimeMillis() }
 }
 
 private fun artworkCacheKey(song: Song): String =
@@ -94,8 +104,11 @@ private suspend fun loadSongArtwork(song: Song): ImageBitmap? = withContext(Disp
 fun rememberArtwork(song: Song?): ImageBitmap? {
     if (song == null) return null
     val key = artworkCacheKey(song)
-    val bitmap by produceState<ImageBitmap?>(initialValue = ArtworkCache.get(key), key) {
-        if (value != null) return@produceState
+    // state 里带上 key，确保切歌后只会使用当前歌曲的封面，不会继续显示上一首
+    val state by produceState<Pair<String, ImageBitmap?>?>(initialValue = null, key) {
+        val cached = ArtworkCache.get(key)
+        value = key to cached
+        if (cached != null) return@produceState
         if (ArtworkCache.hasFailed(key)) return@produceState
         val loaded = loadSongArtwork(song)
         if (loaded == null) {
@@ -103,17 +116,20 @@ fun rememberArtwork(song: Song?): ImageBitmap? {
         } else {
             ArtworkCache.put(key, loaded)
         }
-        value = loaded
+        value = key to loaded
     }
-    return bitmap
+    // state 尚未切到当前 key 的那一帧，直接读缓存，避免闪一下占位图
+    return state?.takeIf { it.first == key }?.second ?: ArtworkCache.get(key)
 }
 
 @Composable
 fun rememberRemoteArtwork(url: String?): ImageBitmap? {
     if (url.isNullOrBlank()) return null
     val key = "url|$url"
-    val bitmap by produceState<ImageBitmap?>(initialValue = ArtworkCache.get(key), key) {
-        if (value != null) return@produceState
+    val state by produceState<Pair<String, ImageBitmap?>?>(initialValue = null, key) {
+        val cached = ArtworkCache.get(key)
+        value = key to cached
+        if (cached != null) return@produceState
         if (ArtworkCache.hasFailed(key)) return@produceState
         val loaded = loadRemoteBitmap(url)
         if (loaded == null) {
@@ -121,9 +137,9 @@ fun rememberRemoteArtwork(url: String?): ImageBitmap? {
         } else {
             ArtworkCache.put(key, loaded)
         }
-        value = loaded
+        value = key to loaded
     }
-    return bitmap
+    return state?.takeIf { it.first == key }?.second ?: ArtworkCache.get(key)
 }
 
 @Composable

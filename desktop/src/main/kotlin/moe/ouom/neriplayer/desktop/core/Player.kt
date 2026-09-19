@@ -388,6 +388,7 @@ class PlayerManager(
         _currentSong.value = song
         _state.value = PlaybackState.PREPARING
         _buffering.value = true
+        engine.prepare(song.durationMs)
         _lyrics.value = lyricsRepository.cached(song) ?: Lyrics()
         scope.launch { loadLyricsFor(song) }
         scope.launch { updateCoverSeed(song) }

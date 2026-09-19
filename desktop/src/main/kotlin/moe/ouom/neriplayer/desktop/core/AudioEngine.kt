@@ -39,6 +39,9 @@ interface AudioEngine {
     var onError: ((String) -> Unit)?
 
     fun open(input: AudioInput, startMs: Long, durationMs: Long)
+
+    /** 切歌时先重置进度与时长，避免界面短暂显示上一首的进度信息。 */
+    fun prepare(durationMs: Long)
     fun play()
     fun pause()
     fun release()
@@ -119,6 +122,10 @@ class FfmpegAudioEngine : AudioEngine {
     private var playRequested = false
     private var restarting = false
     private var generation = 0
+    private val pauseGate = Object()
+
+    @Volatile
+    private var paused = false
 
     override fun open(input: AudioInput, startMs: Long, durationMs: Long) {
         synchronized(lock) {
@@ -127,6 +134,7 @@ class FfmpegAudioEngine : AudioEngine {
             this.offsetMs = startMs.coerceAtLeast(0L)
             this.durationMs = durationMs
             playRequested = false
+            paused = false
             _snapshot.value = EngineSnapshot(
                 positionMs = this.offsetMs,
                 durationMs = durationMs,
@@ -137,11 +145,26 @@ class FfmpegAudioEngine : AudioEngine {
         startPipeline(startMs = offsetMs, autoPlay = false)
     }
 
+    override fun prepare(durationMs: Long) {
+        synchronized(lock) {
+            offsetMs = 0L
+            this.durationMs = durationMs
+        }
+        _snapshot.value = EngineSnapshot(
+            positionMs = 0L,
+            durationMs = durationMs,
+            playing = false,
+            buffering = true,
+        )
+    }
+
     override fun play() {
         val current = synchronized(lock) {
             playRequested = true
+            paused = false
             line
         }
+        synchronized(pauseGate) { pauseGate.notifyAll() }
         if (current == null) {
             startPipeline(startMs = synchronized(lock) { offsetMs }, autoPlay = true)
         } else {
@@ -153,6 +176,7 @@ class FfmpegAudioEngine : AudioEngine {
     override fun pause() {
         val current = synchronized(lock) {
             playRequested = false
+            paused = true
             line
         }
         runCatching { current?.stop() }
@@ -161,9 +185,12 @@ class FfmpegAudioEngine : AudioEngine {
 
     override fun release() {
         synchronized(lock) {
+            paused = false
+            generation += 1
             stopPipelineLocked()
             input = null
         }
+        synchronized(pauseGate) { pauseGate.notifyAll() }
         _snapshot.value = EngineSnapshot()
     }
 
@@ -351,8 +378,14 @@ class FfmpegAudioEngine : AudioEngine {
         try {
             while (true) {
                 if (synchronized(lock) { generation != myGeneration || restarting }) break
+                // 暂停时在此等待，避免继续消费解码数据（否则会一路读到文件尾并误判为播放结束）
+                awaitResume(myGeneration)
+                if (synchronized(lock) { generation != myGeneration || restarting }) break
                 val read = inputStream.read(buffer)
                 if (read < 0) {
+                    // 处于暂停状态读到结尾时不立即切歌，等恢复播放后再结算
+                    awaitResume(myGeneration)
+                    if (synchronized(lock) { generation != myGeneration }) return
                     finishedNormally = true
                     break
                 }
@@ -421,6 +454,16 @@ class FfmpegAudioEngine : AudioEngine {
         }
     }
 
+    /** 暂停期间阻塞读取线程，直到恢复播放、切换歌曲或释放引擎。 */
+    private fun awaitResume(myGeneration: Int) {
+        if (!paused) return
+        synchronized(pauseGate) {
+            while (paused && synchronized(lock) { generation == myGeneration }) {
+                runCatching { pauseGate.wait(200L) }
+            }
+        }
+    }
+
     private fun stopPipelineLocked() {
         restarting = true
         runCatching { process?.destroy() }
@@ -429,6 +472,7 @@ class FfmpegAudioEngine : AudioEngine {
         runCatching { line?.close() }
         line = null
         restarting = false
+        synchronized(pauseGate) { pauseGate.notifyAll() }
     }
 }
 
@@ -453,6 +497,10 @@ class JavaSoundAudioEngine : AudioEngine {
     private var playRequested = false
     private var generation = 0
     private val closing = AtomicBoolean(false)
+    private val pauseGate = Object()
+
+    @Volatile
+    private var paused = false
 
     override fun open(input: AudioInput, startMs: Long, durationMs: Long) {
         synchronized(lock) {
@@ -462,15 +510,32 @@ class JavaSoundAudioEngine : AudioEngine {
             this.durationMs = durationMs
             generation += 1
             playRequested = false
+            paused = false
         }
+        synchronized(pauseGate) { pauseGate.notifyAll() }
         _snapshot.value = EngineSnapshot(positionMs = startMs, durationMs = durationMs, buffering = true)
+    }
+
+    override fun prepare(durationMs: Long) {
+        synchronized(lock) {
+            offsetMs = 0L
+            this.durationMs = durationMs
+        }
+        _snapshot.value = EngineSnapshot(
+            positionMs = 0L,
+            durationMs = durationMs,
+            playing = false,
+            buffering = true,
+        )
     }
 
     override fun play() {
         val shouldStart = synchronized(lock) {
             playRequested = true
+            paused = false
             thread == null
         }
+        synchronized(pauseGate) { pauseGate.notifyAll() }
         if (shouldStart) {
             startStream()
         } else {
@@ -480,17 +545,22 @@ class JavaSoundAudioEngine : AudioEngine {
     }
 
     override fun pause() {
-        synchronized(lock) { playRequested = false }
+        synchronized(lock) {
+            playRequested = false
+            paused = true
+        }
         synchronized(lock) { line }?.let { runCatching { it.stop() } }
         _snapshot.value = _snapshot.value.copy(playing = false)
     }
 
     override fun release() {
         synchronized(lock) {
+            paused = false
             closeLocked()
             input = null
             generation += 1
         }
+        synchronized(pauseGate) { pauseGate.notifyAll() }
         _snapshot.value = EngineSnapshot()
     }
 
@@ -569,8 +639,12 @@ class JavaSoundAudioEngine : AudioEngine {
             try {
                 while (true) {
                     if (synchronized(lock) { generation != myGeneration }) return@Thread
+                    awaitResume(myGeneration)
+                    if (synchronized(lock) { generation != myGeneration }) return@Thread
                     val read = decoded.read(buffer)
                     if (read < 0) {
+                        awaitResume(myGeneration)
+                        if (synchronized(lock) { generation != myGeneration }) return@Thread
                         finished = true
                         break
                     }
@@ -612,11 +686,22 @@ class JavaSoundAudioEngine : AudioEngine {
         }
     }
 
+    /** 暂停期间阻塞读取线程，直到恢复播放或释放引擎。 */
+    private fun awaitResume(myGeneration: Int) {
+        if (!paused) return
+        synchronized(pauseGate) {
+            while (paused && synchronized(lock) { generation == myGeneration }) {
+                runCatching { pauseGate.wait(200L) }
+            }
+        }
+    }
+
     private fun closeLocked() {
         runCatching { line?.stop() }
         runCatching { line?.close() }
         line = null
         thread = null
+        synchronized(pauseGate) { pauseGate.notifyAll() }
     }
 }
 
