@@ -99,6 +99,8 @@ data class AppSettings(
     val coverShowsLyrics: Boolean = true,
     val showNowPlayingTitle: Boolean = true,
     val songTitleMarquee: Boolean = true,
+    /** 界面缩放（HiDPI）：0 = 跟随桌面缩放，其余为 1.0 / 1.25 / 1.5 … 的固定比例。 */
+    val uiScale: Float = 0f,
     val qualityPreference: String = "exhigh",
     val neteaseEnabled: Boolean = true,
     val bilibiliEnabled: Boolean = true,

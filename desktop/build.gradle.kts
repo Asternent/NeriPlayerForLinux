@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "moe.ouom.neriplayer"
-version = "1.4.2"
+version = "1.4.3"
 
 kotlin {
     jvmToolchain(17)
@@ -193,7 +193,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb)
             packageName = "NeriPlayer"
-            packageVersion = "1.4.2"
+            packageVersion = "1.4.3"
             description = "NeriPlayer 音理音理 — Linux 原生 Compose Desktop 音乐播放器"
             vendor = "NeriPlayer Desktop"
             copyright = "GPL-3.0-only"

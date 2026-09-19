@@ -69,8 +69,10 @@ import kotlinx.coroutines.delay
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.core.AppSettings
 import moe.ouom.neriplayer.desktop.core.PlaybackState
+import moe.ouom.neriplayer.desktop.core.UiScale
 import java.awt.GraphicsEnvironment
 import java.awt.MouseInfo
+import kotlin.math.roundToInt
 
 private const val PANEL_WIDTH = 340
 private const val PANEL_HEIGHT = 436
@@ -96,7 +98,17 @@ fun TrayControlPanel(
     val index by container.player.currentIndex.collectAsState()
     val playing = state == PlaybackState.PLAYING
 
-    val windowState = rememberWindowState(size = DpSize(PANEL_WIDTH.dp, PANEL_HEIGHT.dp))
+    // 界面缩放：面板尺寸与内容一起放大（Compose 在 Linux 上不读桌面缩放）
+    val panelScale = UiScale.resolve(settings.uiScale)
+    val panelDpFactor = panelScale / platformUiScale()
+    val panelWidthPx = (PANEL_WIDTH * panelScale).roundToInt()
+    val panelHeightPx = (PANEL_HEIGHT * panelScale).roundToInt()
+    val windowState = rememberWindowState(
+        size = DpSize(
+            PANEL_WIDTH.dp * panelDpFactor,
+            PANEL_HEIGHT.dp * panelDpFactor,
+        ),
+    )
 
     // 出现在鼠标附近（托盘图标通常在屏幕边缘），并夹在屏幕可视区域内
     LaunchedEffect(visible) {
@@ -104,10 +116,10 @@ fun TrayControlPanel(
             GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
         }.getOrNull() ?: return@LaunchedEffect
         val pointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
-        val maxX = (bounds.width - PANEL_WIDTH - 8).coerceAtLeast(8)
-        val maxY = (bounds.height - PANEL_HEIGHT - 8).coerceAtLeast(8)
-        val centeredX = (pointer?.x ?: (bounds.width - PANEL_WIDTH / 2)) - PANEL_WIDTH / 2
-        val aboveY = (pointer?.y ?: (bounds.height - PANEL_HEIGHT / 2)) - PANEL_HEIGHT - 16
+        val maxX = (bounds.width - panelWidthPx - 8).coerceAtLeast(8)
+        val maxY = (bounds.height - panelHeightPx - 8).coerceAtLeast(8)
+        val centeredX = (pointer?.x ?: (bounds.width - panelWidthPx / 2)) - panelWidthPx / 2
+        val aboveY = (pointer?.y ?: (bounds.height - panelHeightPx / 2)) - panelHeightPx - 16
         windowState.position = WindowPosition(
             centeredX.coerceIn(8, maxX).dp,
             aboveY.coerceIn(8, maxY).dp,
@@ -130,18 +142,20 @@ fun TrayControlPanel(
             esc
         },
     ) {
-        NeriThemeForSettings(container) {
-            PanelContent(
-                container = container,
-                song = song,
-                playing = playing,
-                position = position,
-                duration = duration,
-                queueLabel = if (queue.isEmpty()) null else "${index + 1} / ${queue.size}",
-                settings = settings,
-                onDismiss = onDismiss,
-                onShowWindow = onShowWindow,
-            )
+        ApplyUiScale(panelScale) {
+            NeriThemeForSettings(container) {
+                PanelContent(
+                    container = container,
+                    song = song,
+                    playing = playing,
+                    position = position,
+                    duration = duration,
+                    queueLabel = if (queue.isEmpty()) null else "${index + 1} / ${queue.size}",
+                    settings = settings,
+                    onDismiss = onDismiss,
+                    onShowWindow = onShowWindow,
+                )
+            }
         }
     }
 }

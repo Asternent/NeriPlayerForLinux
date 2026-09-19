@@ -13,11 +13,13 @@
 从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
 
 ```bash
-sudo dpkg -i neriplayer_1.4.2-1_amd64.deb
+sudo dpkg -i neriplayer_1.4.3-1_amd64.deb
 neriplayer          # 或从应用菜单启动「NeriPlayer」
 ```
 
 - 安装包内置 jlink 运行时，终端用户**不需要**安装 JDK。
+- **高分屏（HiDPI）**：默认跟随桌面缩放（GNOME 的 200% 这类），也可以在「设置 → 界面 → 界面缩放」里
+  手动选择 100% ~ 250%；`NERIPLAYER_UI_SCALE=1.5 neriplayer` 可临时指定。
 - **建议安装 `ffmpeg`**：用于解码 m4a / aac / opus 等格式，并提供倍速、变调、响度增强与十段均衡器；
   缺少时自动降级到 Java Sound 引擎（mp3 / flac / ogg / wav / aiff 仍可播放）。
 - 首次启动显示使用须知，随后在「设置 → 媒体库」添加音乐文件夹并扫描即可建立本地曲库。
@@ -32,7 +34,8 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 悬浮歌词（描边样式，可拖动定位） <br> ![悬浮歌词](docs/screenshots/floating-lyrics.png) | 哔哩哔哩收藏夹 <br> ![B站收藏夹](docs/screenshots/bilibili-favorites.png) |
 | 设置 → 账号：网易云 / 哔哩哔哩扫码登录 <br> ![账号](docs/screenshots/settings.png) | 设置 → 同步：GitHub 跨设备同步 <br> ![同步](docs/screenshots/github-sync.png) |
 | 托盘控制面板：封面、进度、传输控制与音量 <br> ![托盘面板](docs/screenshots/tray-panel.png) | 同一面板的深色主题 <br> ![托盘面板深色](docs/screenshots/tray-panel-dark.png) |
-| 宽窗口 / 最大化：内容区居中收拢，不再被拉散 <br> ![宽窗口](docs/screenshots/wide-window.png) | |
+| 宽窗口 / 最大化：内容区居中收拢，不再被拉散 <br> ![宽窗口](docs/screenshots/wide-window.png) | 界面缩放：跟随桌面 200% / 手动 100%–250% <br> ![界面缩放](docs/screenshots/ui-scale.png) |
+| 高分屏（桌面 200% 缩放）下的实际渲染 <br> ![HiDPI](docs/screenshots/hidpi-200.png) | |
 
 ## 功能清单
 
@@ -56,6 +59,7 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 定位到正在播放 | ✅ 列表高亮当前歌曲（播放指示器）+ 一键滚动定位并闪烁提示 |
 | 歌曲下载到本地 | ✅ 单曲 / 批量下载、进度与取消重试、离线播放、下载分栏与管理面板 |
 | 后台常驻与系统控制 | ✅ 托盘常驻后台播放 + 主题化托盘控制面板 + 系统媒体控制（MPRIS，媒体键 / 桌面媒体组件 / playerctl） |
+| 界面缩放（HiDPI） | ✅ 跟随桌面缩放（Xft.dpi / GDK_SCALE / sun.java2d.uiScale），或手动 100% ~ 250%（设置 → 界面） |
 
 ### 与原 Android 应用的差异
 

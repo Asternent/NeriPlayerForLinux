@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -31,6 +32,10 @@ import moe.ouom.neriplayer.desktop.ui.AppIntents
 import moe.ouom.neriplayer.desktop.ui.TrayControlPanel
 import moe.ouom.neriplayer.desktop.ui.setupDesktopLookAndFeel
 import moe.ouom.neriplayer.desktop.core.PlaybackState
+import moe.ouom.neriplayer.desktop.core.UiScale
+import moe.ouom.neriplayer.desktop.ui.ApplyUiScale
+import moe.ouom.neriplayer.desktop.ui.mainWindowSize
+import moe.ouom.neriplayer.desktop.ui.platformUiScale
 import kotlinx.coroutines.delay
 
 fun main() {
@@ -45,12 +50,14 @@ fun main() {
         var trayPanelVisible by remember { mutableStateOf(false) }
         val currentSong by container.player.currentSong.collectAsState()
         val playbackState by container.player.state.collectAsState()
+        // 界面缩放：默认跟随桌面（Linux 上 Compose 不读 Xft.dpi，高分屏会只有一半大小）
+        val uiScale = remember(settings.uiScale) { UiScale.resolve(settings.uiScale) }
         // 允许通过环境变量覆盖初始窗口尺寸（便于截图与多屏使用）
         val sizeOverride = System.getenv("NERIPLAYER_WINDOW_SIZE").orEmpty()
         val windowSize = sizeOverride.split('x').mapNotNull { it.trim().toIntOrNull() }
             .takeIf { it.size == 2 }
-            ?.let { DpSize(it[0].dp, it[1].dp) }
-            ?: DpSize(1180.dp, 820.dp)
+            ?.let { mainWindowSize(it[0].toFloat(), it[1].toFloat(), uiScale) }
+            ?: mainWindowSize(1180f, 820f, uiScale)
         val windowState = rememberWindowState(
             size = windowSize,
             position = WindowPosition(Alignment.Center),
@@ -86,7 +93,18 @@ fun main() {
                     delay(350)
                 }
             }
-            NeriApp(container)
+            val windowDensity = LocalDensity.current.density
+            LaunchedEffect(uiScale, windowDensity) {
+                println(
+                    "[ui] 界面缩放 ${"%.0f".format(uiScale * 100)}%（窗口基准密度=" +
+                        "${"%.2f".format(windowDensity)}，平台=" +
+                        "${"%.2f".format(platformUiScale())}）：" +
+                        if (settings.uiScale <= 0f) UiScale.source else "设置中手动指定"
+                )
+            }
+            ApplyUiScale(uiScale) {
+                NeriApp(container)
+            }
         }
 
         // 最小化时隐藏到托盘（仍继续播放）

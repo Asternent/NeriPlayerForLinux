@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Folder
@@ -61,11 +62,13 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.core.AppDirs
 import moe.ouom.neriplayer.desktop.core.DarkModeSetting
 import moe.ouom.neriplayer.desktop.core.FfmpegSupport
 import moe.ouom.neriplayer.desktop.core.MediaSource
+import moe.ouom.neriplayer.desktop.core.UiScale
 import moe.ouom.neriplayer.desktop.core.displayName
 import moe.ouom.neriplayer.desktop.ui.AccountRow
 import moe.ouom.neriplayer.desktop.ui.EqualizerPresets
@@ -211,6 +214,70 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+        }
+
+        item {
+            SettingsSection(
+                title = "界面",
+                description = "界面缩放（高分屏适配）",
+                icon = Icons.Outlined.AspectRatio,
+            ) {
+                val systemScale = UiScale.systemScale()
+                val effectiveScale = UiScale.resolve(settings.uiScale)
+                SettingLabel("界面缩放")
+                Column {
+                    UiScale.PRESETS.chunked(4).forEach { rowPresets ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        ) {
+                            rowPresets.forEach { (value, label) ->
+                                FilterChip(
+                                    selected = kotlin.math.abs(settings.uiScale - value) < 0.001f,
+                                    onClick = {
+                                        container.settings.update { it.copy(uiScale = value) }
+                                        showMessage(
+                                            if (value <= 0f) {
+                                                "界面缩放：跟随系统（${(systemScale * 100).roundToInt()}%）"
+                                            } else {
+                                                "界面缩放：${(value * 100).roundToInt()}%"
+                                            }
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            if (value <= 0f) {
+                                                "跟随系统（${(systemScale * 100).roundToInt()}%）"
+                                            } else {
+                                                label
+                                            }
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = "桌面本身开缩放时（例如 GNOME 高分屏的 200%），Linux 上的 Compose 不会自动跟随，" +
+                        "界面会只有一半大小；这里可以手动指定比例。界面立即缩放，窗口尺寸在下次启动时生效。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                InfoRow(
+                    label = "当前生效",
+                    value = "${(effectiveScale * 100).roundToInt()}% · " +
+                        if (settings.uiScale <= 0f) UiScale.source else "设置中手动指定",
+                )
+                InfoRow(
+                    label = "屏幕",
+                    value = runCatching {
+                        val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+                        "${screen.width}×${screen.height} 像素"
+                    }.getOrDefault("未知"),
+                )
             }
         }
 
@@ -510,7 +577,7 @@ fun SettingsScreen(
                 description = "版本信息、运行环境与数据管理",
                 icon = Icons.Outlined.Info,
             ) {
-                InfoRow("应用版本", "NeriPlayer Desktop 1.4.2")
+                InfoRow("应用版本", "NeriPlayer Desktop 1.4.3")
                 InfoRow("音频引擎", if (FfmpegSupport.available) "ffmpeg（${FfmpegSupport.version.take(28)}…）" else "Java Sound 回退引擎")
                 InfoRow("音效支持", if (container.player.supportsEffects) "倍速 / 变调 / 响度 / 均衡器可用" else "当前不可用（缺少 ffmpeg）")
                 InfoRow("数据目录", AppDirs.dataDir.absolutePath)

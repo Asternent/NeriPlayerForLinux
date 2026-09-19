@@ -59,6 +59,7 @@ import androidx.compose.ui.window.rememberWindowState
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.core.AppSettings
 import moe.ouom.neriplayer.desktop.core.PlaybackState
+import moe.ouom.neriplayer.desktop.core.UiScale
 import moe.ouom.neriplayer.desktop.core.currentLyricIndex
 import java.awt.GraphicsEnvironment
 import kotlin.math.roundToInt
@@ -109,6 +110,11 @@ fun FloatingLyricsWindow(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val widthDp = settings.floatingLyricsMaxWidthDp.dp
     val heightDp = floatingWindowHeightDp(settings).dp
+    // 界面缩放：窗口尺寸与歌词内容一起放大（Compose 在 Linux 上不读桌面缩放）
+    val uiScale = remember(settings.uiScale) { UiScale.resolve(settings.uiScale) }
+    val windowDpFactor = uiScale / platformUiScale()
+    val windowWidthDp = widthDp * windowDpFactor
+    val windowHeightDp = heightDp * windowDpFactor
 
     // 初始位置：按屏幕比例换算，避免窗口先出现在默认位置再跳动
     val initialPosition = remember {
@@ -119,8 +125,8 @@ fun FloatingLyricsWindow(
             val (x, y) = resolveFloatingPosition(
                 screenWidth = bounds.width,
                 screenHeight = bounds.height,
-                windowWidth = (widthDp.value * density.density).roundToInt(),
-                windowHeight = (heightDp.value * density.density).roundToInt(),
+                windowWidth = (windowWidthDp.value * density.density).roundToInt(),
+                windowHeight = (windowHeightDp.value * density.density).roundToInt(),
                 ratioX = settings.floatingLyricsPositionX,
                 ratioY = settings.floatingLyricsPositionY,
             )
@@ -129,7 +135,7 @@ fun FloatingLyricsWindow(
     }
 
     val windowState = rememberWindowState(
-        size = DpSize(widthDp, heightDp),
+        size = DpSize(windowWidthDp, windowHeightDp),
         position = initialPosition,
     )
 
@@ -139,9 +145,9 @@ fun FloatingLyricsWindow(
 
     val densityValue = density.density
     // 尺寸变化（字号 / 最大宽度 / 翻译开关）：只调整窗口大小，保持左上角不动
-    LaunchedEffect(widthDp, heightDp, screenBounds) {
+    LaunchedEffect(windowWidthDp, windowHeightDp, screenBounds) {
         val bounds = screenBounds ?: return@LaunchedEffect
-        val targetSize = DpSize(widthDp, heightDp)
+        val targetSize = DpSize(windowWidthDp, windowHeightDp)
         if (windowState.size != targetSize) {
             windowState.size = targetSize
         }
@@ -159,8 +165,8 @@ fun FloatingLyricsWindow(
     LaunchedEffect(
         settings.floatingLyricsPositionX,
         settings.floatingLyricsPositionY,
-        widthDp,
-        heightDp,
+        windowWidthDp,
+        windowHeightDp,
         screenBounds,
     ) {
         if (dragging) return@LaunchedEffect
@@ -168,8 +174,8 @@ fun FloatingLyricsWindow(
         val (x, y) = resolveFloatingPosition(
             screenWidth = bounds.width,
             screenHeight = bounds.height,
-            windowWidth = with(density) { widthDp.roundToPx() },
-            windowHeight = with(density) { heightDp.roundToPx() },
+            windowWidth = with(density) { windowWidthDp.roundToPx() },
+            windowHeight = with(density) { windowHeightDp.roundToPx() },
             ratioX = settings.floatingLyricsPositionX,
             ratioY = settings.floatingLyricsPositionY,
         )
@@ -177,7 +183,7 @@ fun FloatingLyricsWindow(
         val actual = windowRef.value
         if (actual != null) {
             val actualWidth = with(density) { actual.width.toDp().value }
-            if (kotlin.math.abs(actualWidth - widthDp.value) > 1f) {
+            if (kotlin.math.abs(actualWidth - windowWidthDp.value) > 1f) {
                 // 尺寸刚变化，左上角已由上面的效果保持，不要再按比例挪动
                 return@LaunchedEffect
             }
@@ -210,6 +216,8 @@ fun FloatingLyricsWindow(
         title = "NeriPlayer 悬浮歌词",
         onCloseRequest = onClose,
     ) {
+        // 歌词字号、内边距与控制按钮随界面缩放一起放大
+        ApplyUiScale(uiScale) {
         LaunchedEffect(Unit) { windowRef.value = window }
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(600)
@@ -370,6 +378,7 @@ fun FloatingLyricsWindow(
                     }
                 }
             }
+        }
         }
     }
 }
