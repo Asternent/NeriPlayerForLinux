@@ -36,13 +36,13 @@ Linux 原生桌面应用：Kotlin + Compose Desktop（JVM / Skia），使用 JDK
 ```bash
 ./gradlew run            # 直接运行
 ./gradlew selfTest       # 核心自检：解码 / 播放 / 跳转 / 变速 / 歌词解析 / 在线接口
-./gradlew packageDeb     # 生成 build/compose/binaries/main/deb/neriplayer_1.0.0-1_amd64.deb
+./gradlew packageDeb     # 生成 build/compose/binaries/main/deb/neriplayer_1.0.1-1_amd64.deb
 ```
 
 安装与启动：
 
 ```bash
-sudo dpkg -i neriplayer_1.0.0-1_amd64.deb
+sudo dpkg -i neriplayer_1.0.1-1_amd64.deb
 neriplayer            # 或从应用菜单启动「NeriPlayer」
 ```
 
