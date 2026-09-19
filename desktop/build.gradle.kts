@@ -45,8 +45,16 @@ compose.desktop {
             vendor = "NeriPlayer Desktop"
             copyright = "GPL-3.0-only"
             licenseFile.set(project.file("packaging/LICENSE"))
-            // java.net.http 用于在线音源请求，jdk.unsupported / java.instrument 供解码与音频库使用
-            modules("java.instrument", "java.net.http", "jdk.unsupported", "java.logging", "jdk.crypto.ec")
+            // java.net.http 用于在线音源请求，jdk.unsupported / java.instrument 供解码与音频库使用，
+            // jdk.security.auth 供 MPRIS（dbus-java 读取 uid）使用，缺失会导致安装版媒体控制不可用
+            modules(
+                "java.instrument",
+                "java.net.http",
+                "jdk.unsupported",
+                "java.logging",
+                "jdk.crypto.ec",
+                "jdk.security.auth",
+            )
             linux {
                 packageName = "neriplayer"
                 debMaintainer = "neriplayer@localhost"
