@@ -1,5 +1,22 @@
 [English](./README_EN.md) | [中文](./README.md)
 
+> [!IMPORTANT]
+> ### 🐧 本仓库是 fork：新增了 Linux 原生桌面版
+>
+> 在 [cwuom/NeriPlayer](https://github.com/cwuom/NeriPlayer)（原生 Android 应用）的基础上，本 fork 新增了
+> **不依赖 Android 运行环境**的 Compose Desktop 版本，可直接在 Linux 桌面安装使用：
+> Kotlin + Compose Desktop（JVM / Skia），打包为单个 `.deb`，界面与核心功能按原应用复刻。
+>
+> - 📖 桌面版文档：[`desktop/README.md`](./desktop/README.md)
+> - ⬇️ 下载安装：[Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) → `neriplayer_<版本>-1_amd64.deb`
+> - 🔄 与原应用**共用同一套 GitHub 同步协议**，歌单 / 收藏 / 最近播放 / 播放统计可双向同步
+> - 🔑 支持网易云与哔哩哔哩应用内扫码登录、本地媒体库、歌词（含悬浮歌词）、多源在线播放
+>
+> 桌面版源码位于 [`desktop/`](./desktop) 目录，不影响原有 Android 工程。
+> 下方内容为原 Android 项目的 README，保持原样。
+
+---
+
 <h1 align="center">NeriPlayer (音理音理!)</h1>
 
 <div align="center">
