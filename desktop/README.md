@@ -13,7 +13,7 @@
 从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
 
 ```bash
-sudo dpkg -i neriplayer_1.4.1-1_amd64.deb
+sudo dpkg -i neriplayer_1.4.2-1_amd64.deb
 neriplayer          # 或从应用菜单启动「NeriPlayer」
 ```
 
@@ -32,6 +32,7 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 悬浮歌词（描边样式，可拖动定位） <br> ![悬浮歌词](docs/screenshots/floating-lyrics.png) | 哔哩哔哩收藏夹 <br> ![B站收藏夹](docs/screenshots/bilibili-favorites.png) |
 | 设置 → 账号：网易云 / 哔哩哔哩扫码登录 <br> ![账号](docs/screenshots/settings.png) | 设置 → 同步：GitHub 跨设备同步 <br> ![同步](docs/screenshots/github-sync.png) |
 | 托盘控制面板：封面、进度、传输控制与音量 <br> ![托盘面板](docs/screenshots/tray-panel.png) | 同一面板的深色主题 <br> ![托盘面板深色](docs/screenshots/tray-panel-dark.png) |
+| 宽窗口 / 最大化：内容区居中收拢，不再被拉散 <br> ![宽窗口](docs/screenshots/wide-window.png) | |
 
 ## 功能清单
 
@@ -171,6 +172,11 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 ./gradlew run            # 直接运行
 ./gradlew packageDeb     # 生成 build/compose/binaries/main/deb/neriplayer_<版本>-1_amd64.deb
 ```
+
+打包时会自动裁剪图标库（`trimMaterialIcons` 任务）：Compose 的 `material-icons-extended` 把一万多个图标
+都编成了独立类（jar 36 MB，且 class 已是 deflate 过的，deb 再压缩几乎压不动），而应用真正用到的只有几十个。
+编译期照常使用完整依赖，打包与运行时替换成扫描常量池后只保留被引用图标的精简 jar，安装包因此从 95 MB 降到 59 MB。
+新增图标用法后无需手工维护：该任务每次打包都会重新扫描本工程的 class 与编译期依赖重新生成。
 
 ### 测试
 

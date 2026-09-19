@@ -232,7 +232,7 @@ private fun AppScaffold(container: AppContainer) {
             }
         },
     ) { innerPadding ->
-        Box(Modifier.fillMaxSize().padding(innerPadding)) {
+        AppContentContainer(Modifier.padding(innerPadding)) {
             when (current) {
                 is Screen.Tab -> when (current.tab) {
                     MainTab.HOME -> HomeScreen(

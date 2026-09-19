@@ -6,8 +6,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -77,19 +80,38 @@ fun NeriBottomBar(
     onSelect: (MainTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NavigationBar(
-        modifier = modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 0.dp,
-    ) {
-        MainTab.entries.forEach { tab ->
-            NavigationBarItem(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
-                icon = { Icon(tab.icon, contentDescription = tab.label) },
-                label = { Text(tab.label, maxLines = 1) },
-                alwaysShowLabel = true,
-            )
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // 窗口比内容区还宽时，把导航栏收拢成居中的浮动条，避免四个入口被拉到屏幕两端
+        val constrain = maxWidth > AppContentMaxWidth
+        val items: @Composable RowScope.() -> Unit = {
+            MainTab.entries.forEach { tab ->
+                NavigationBarItem(
+                    selected = selected == tab,
+                    onClick = { onSelect(tab) },
+                    icon = { Icon(tab.icon, contentDescription = tab.label) },
+                    label = { Text(tab.label, maxLines = 1) },
+                    alwaysShowLabel = true,
+                )
+            }
+        }
+        if (constrain) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = AppBottomBarMaxWidth)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 0.dp,
+            ) {
+                NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) { items() }
+            }
+        } else {
+            NavigationBar(
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 0.dp,
+            ) { items() }
         }
     }
 }
@@ -107,8 +129,37 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     if (song == null) return
+    // 宽窗口下迷你播放器同样居中收拢，不随窗口无限拉伸
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        MiniPlayerCard(
+            song = song,
+            isPlaying = isPlaying,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onToggle = onToggle,
+            onNext = onNext,
+            onPrevious = onPrevious,
+            onOpen = onOpen,
+        )
+    }
+}
+
+@Composable
+private fun MiniPlayerCard(
+    song: Song,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onToggle: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onOpen: () -> Unit,
+) {
     Surface(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier
+            .widthIn(max = AppContentMaxWidth)
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 2.dp,
