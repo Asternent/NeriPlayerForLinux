@@ -62,7 +62,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.delay
@@ -110,22 +109,6 @@ fun TrayControlPanel(
         ),
     )
 
-    // 出现在鼠标附近（托盘图标通常在屏幕边缘），并夹在屏幕可视区域内
-    LaunchedEffect(visible) {
-        val bounds = runCatching {
-            GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
-        }.getOrNull() ?: return@LaunchedEffect
-        val pointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
-        val maxX = (bounds.width - panelWidthPx - 8).coerceAtLeast(8)
-        val maxY = (bounds.height - panelHeightPx - 8).coerceAtLeast(8)
-        val centeredX = (pointer?.x ?: (bounds.width - panelWidthPx / 2)) - panelWidthPx / 2
-        val aboveY = (pointer?.y ?: (bounds.height - panelHeightPx / 2)) - panelHeightPx - 16
-        windowState.position = WindowPosition(
-            centeredX.coerceIn(8, maxX).dp,
-            aboveY.coerceIn(8, maxY).dp,
-        )
-    }
-
     Window(
         visible = visible,
         state = windowState,
@@ -152,6 +135,8 @@ fun TrayControlPanel(
                     duration = duration,
                     queueLabel = if (queue.isEmpty()) null else "${index + 1} / ${queue.size}",
                     settings = settings,
+                    panelWidthPx = panelWidthPx,
+                    panelHeightPx = panelHeightPx,
                     onDismiss = onDismiss,
                     onShowWindow = onShowWindow,
                 )
@@ -169,15 +154,65 @@ private fun FrameWindowScope.PanelContent(
     duration: Long,
     queueLabel: String?,
     settings: AppSettings,
+    panelWidthPx: Int,
+    panelHeightPx: Int,
     onDismiss: () -> Unit,
     onShowWindow: () -> Unit,
 ) {
-    // 弹出式行为：失去焦点就收起（给窗口一点获得焦点的时间）
+    // 弹出式行为
     LaunchedEffect(Unit) {
-        delay(500)
+        // 1) 出现在鼠标附近（托盘图标通常在屏幕边缘），并夹在屏幕可视区域内。
+        //    直接用窗口坐标定位，不依赖窗口状态里的 position：面板每次弹出都要贴着当前鼠标，
+        //    否则会出现「面板在屏幕上半、鼠标在下半」这种点不到的情况。
+        val pointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+        // 多屏时按「鼠标所在的那块屏幕」定位：托盘图标可能不在主屏上
+        val bounds = runCatching {
+            val environment = GraphicsEnvironment.getLocalGraphicsEnvironment()
+            val screen = pointer?.let { location ->
+                environment.screenDevices.firstOrNull { device ->
+                    device.defaultConfiguration.bounds.contains(location)
+                }
+            }
+            (screen ?: environment.defaultScreenDevice).defaultConfiguration.bounds
+        }.getOrNull()
+        if (bounds != null) {
+            val maxX = (bounds.width - panelWidthPx - 8).coerceAtLeast(8)
+            val maxY = (bounds.height - panelHeightPx - 8).coerceAtLeast(8)
+            val centeredX = (pointer?.x ?: (bounds.width - panelWidthPx / 2)) - panelWidthPx / 2
+            val aboveY = (pointer?.y ?: (bounds.height - panelHeightPx / 2)) - panelHeightPx - 16
+            runCatching {
+                window.setLocation(centeredX.coerceIn(8, maxX), aboveY.coerceIn(8, maxY))
+            }
+        }
+        // 2) 主动要一次焦点：Esc 关闭、键盘操作需要它。
+        //    但**不能依赖**它——应用在后台时，窗口管理器经常不给弹出窗口焦点
+        //    （焦点跟随鼠标、或焦点窃取保护），此时窗口一「失焦」就把面板收起来，
+        //    用户看到的就是「菜单弹出来了，但点按钮没反应」。
+        runCatching {
+            window.toFront()
+            window.requestFocus()
+            window.requestFocusInWindow()
+        }
+
+        // 3) 收起规则：只看鼠标，不看焦点。
+        //    面板是贴着鼠标弹出的（托盘图标就在旁边），鼠标移开到别处一会儿就收起；
+        //    这里刻意**不用**「失焦就收起」——应用在后台时窗口管理器经常不给弹出窗口焦点
+        //    （焦点跟随鼠标 / 焦点窃取保护），那样面板会刚出现就自己消失，
+        //    用户看到的就是「菜单弹出来了，但点按钮没反应」。
+        delay(1500)
+        var awaySince = 0L
         while (true) {
-            delay(200)
-            if (!window.isFocused) {
+            delay(150)
+            val pointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull() ?: continue
+            // 留出较宽的邻域：面板弹在托盘图标上方，鼠标此时还在图标上（面板外十几像素）
+            val area = java.awt.Rectangle(window.bounds).also { it.grow(200, 200) }
+            if (area.contains(pointer)) {
+                awaySince = 0L
+                continue
+            }
+            if (awaySince == 0L) {
+                awaySince = System.currentTimeMillis()
+            } else if (System.currentTimeMillis() - awaySince > 1200) {
                 onDismiss()
                 break
             }

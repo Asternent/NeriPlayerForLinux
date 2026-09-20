@@ -40,6 +40,8 @@ interface UiScriptHost {
     fun setLocateRequest(index: Int, songKey: String?)
     /** 打开下载管理面板。 */
     fun openDownloadPanel()
+    /** 隐藏 / 显示主窗口（模拟「关闭窗口收进托盘」）。 */
+    fun setMainWindowVisible(visible: Boolean)
     /** 打印一次内存快照（堆 / 非堆 / 常驻内存），用于内存占用回归对比。 */
     fun logMemory()
     fun log(message: String)
@@ -339,6 +341,14 @@ suspend fun runUiScript(
                 }
             }
             "downloads-panel" -> host.openDownloadPanel()
+            "hide-window" -> {
+                host.setMainWindowVisible(false)
+                host.log("主窗口已隐藏（模拟关闭到托盘）")
+            }
+            "show-window" -> {
+                host.setMainWindowVisible(true)
+                host.log("主窗口已显示")
+            }
             "tray-panel" -> {
                 // 弹出后台控制面板（托盘左键 / 右键都走这个入口）
                 val toggle = moe.ouom.neriplayer.desktop.ui.AppIntents.toggleTrayPanel

@@ -6,6 +6,8 @@ package moe.ouom.neriplayer.desktop.ui
  */
 object AppIntents {
     var showMainWindow: (() -> Unit)? = null
+    /** 隐藏主窗口（收进托盘），用于「关闭窗口后后台播放」的自动化回归测试。 */
+    var hideMainWindow: (() -> Unit)? = null
     var openSettings: (() -> Unit)? = null
     var openDownloads: (() -> Unit)? = null
     var toggleTrayPanel: (() -> Unit)? = null

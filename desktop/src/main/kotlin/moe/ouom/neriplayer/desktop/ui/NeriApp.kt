@@ -193,6 +193,10 @@ private fun AppScaffold(container: AppContainer) {
                 println("[ui-test] downloads-panel opened")
             }
 
+            override fun setMainWindowVisible(visible: Boolean) {
+                if (visible) AppIntents.showMainWindow?.invoke() else AppIntents.hideMainWindow?.invoke()
+            }
+
             override fun logMemory() {
                 val runtime = Runtime.getRuntime()
                 val mb = { value: Long -> "%.1f".format(value / 1048576.0) }
