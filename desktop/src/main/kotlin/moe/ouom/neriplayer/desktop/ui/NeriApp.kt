@@ -1,6 +1,7 @@
 package moe.ouom.neriplayer.desktop.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -13,6 +14,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -44,8 +46,14 @@ import moe.ouom.neriplayer.desktop.tools.runUiScript
 
 @Composable
 fun NeriApp(container: AppContainer) {
-    NeriThemeForSettings(container) {
-        AppScaffold(container)
+    // 窗口够宽（横屏 / 最大化）时切换到横屏排版：内容铺满窗口，多栏消化横向空间
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val layoutMode = if (maxWidth >= AppWideBreakpoint) AppLayoutMode.WIDE else AppLayoutMode.COMPACT
+        CompositionLocalProvider(LocalAppLayoutMode provides layoutMode) {
+            NeriThemeForSettings(container) {
+                AppScaffold(container)
+            }
+        }
     }
 }
 
@@ -160,6 +168,8 @@ private fun AppScaffold(container: AppContainer) {
 
             override fun setOverlay(name: String?) {
                 uiTestOverlay = name
+                // "close" 表示关掉所有浮层：播放页的面板由 NowPlayingScreen 处理，登录弹窗在这里关掉
+                if (name == null || name == "close") loginSource = null
                 if (name != null && name.startsWith("login")) {
                     loginSource = when (name.removePrefix("login").removePrefix("-").lowercase()) {
                         "netease" -> moe.ouom.neriplayer.desktop.core.MediaSource.NETEASE
@@ -181,6 +191,24 @@ private fun AppScaffold(container: AppContainer) {
             override fun openDownloadPanel() {
                 showDownloadPanel = true
                 println("[ui-test] downloads-panel opened")
+            }
+
+            override fun logMemory() {
+                val runtime = Runtime.getRuntime()
+                val mb = { value: Long -> "%.1f".format(value / 1048576.0) }
+                val rss = runCatching {
+                    java.io.File("/proc/self/status").readLines()
+                        .firstOrNull { it.startsWith("VmRSS:") }
+                        ?.filter { it.isDigit() }
+                        ?.toLongOrNull()
+                }.getOrNull()
+                println(
+                    "[ui-test] mem heap=${mb(runtime.totalMemory() - runtime.freeMemory())}MB/" +
+                        "${mb(runtime.totalMemory())}MB(max=${mb(runtime.maxMemory())}MB) " +
+                        "rss=${rss?.let { mb(it * 1024) } ?: "?"}MB " +
+                        "threads=${Thread.activeCount()} " +
+                        artworkCacheStats()
+                )
             }
 
             override fun log(message: String) {

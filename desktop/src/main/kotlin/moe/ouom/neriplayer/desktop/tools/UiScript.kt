@@ -40,6 +40,8 @@ interface UiScriptHost {
     fun setLocateRequest(index: Int, songKey: String?)
     /** 打开下载管理面板。 */
     fun openDownloadPanel()
+    /** 打印一次内存快照（堆 / 非堆 / 常驻内存），用于内存占用回归对比。 */
+    fun logMemory()
     fun log(message: String)
 }
 
@@ -176,7 +178,8 @@ suspend fun runUiScript(
             "shuffle" -> container.player.toggleShuffle()
             "repeat" -> container.player.cycleRepeatMode()
             "overlay" -> host.setOverlay(command.argument.ifBlank { null })
-            "close-overlay" -> host.setOverlay(null)
+            // 关闭所有浮层（播放页面板 / 登录弹窗），便于脚本连续截屏
+            "close-overlay" -> host.setOverlay("close")
             "back" -> {
                 host.setOverlay(null)
                 host.goBack()
@@ -245,6 +248,10 @@ suspend fun runUiScript(
                 host.log("login-check ${source.displayName}: $result")
             }
             "log" -> host.log(command.argument)
+            "mem-report" -> {
+                if (command.argument.isNotBlank()) host.log("[阶段] ${command.argument}")
+                host.logMemory()
+            }
             "floating" -> {
                 val enabled = command.argument.equals("on", ignoreCase = true)
                 container.settings.update { it.copy(floatingLyricsEnabled = enabled) }

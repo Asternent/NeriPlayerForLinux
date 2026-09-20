@@ -13,13 +13,15 @@
 从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
 
 ```bash
-sudo dpkg -i neriplayer_1.4.3-1_amd64.deb
+sudo dpkg -i neriplayer_1.4.4-1_amd64.deb
 neriplayer          # 或从应用菜单启动「NeriPlayer」
 ```
 
 - 安装包内置 jlink 运行时，终端用户**不需要**安装 JDK。
 - **高分屏（HiDPI）**：默认跟随桌面缩放（GNOME 的 200% 这类），也可以在「设置 → 界面 → 界面缩放」里
   手动选择 100% ~ 250%；`NERIPLAYER_UI_SCALE=1.5 neriplayer` 可临时指定。
+- **横屏 / 宽窗口**：窗口内容宽度到 900 dp 就切换成横屏排版（设置两栏、首页卡片并排、歌词限宽居中），
+  窗口拖窄会自动回到单栏的紧凑排版。
 - **建议安装 `ffmpeg`**：用于解码 m4a / aac / opus 等格式，并提供倍速、变调、响度增强与十段均衡器；
   缺少时自动降级到 Java Sound 引擎（mp3 / flac / ogg / wav / aiff 仍可播放）。
 - 首次启动显示使用须知，随后在「设置 → 媒体库」添加音乐文件夹并扫描即可建立本地曲库。
@@ -34,8 +36,9 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 悬浮歌词（描边样式，可拖动定位） <br> ![悬浮歌词](docs/screenshots/floating-lyrics.png) | 哔哩哔哩收藏夹 <br> ![B站收藏夹](docs/screenshots/bilibili-favorites.png) |
 | 设置 → 账号：网易云 / 哔哩哔哩扫码登录 <br> ![账号](docs/screenshots/settings.png) | 设置 → 同步：GitHub 跨设备同步 <br> ![同步](docs/screenshots/github-sync.png) |
 | 托盘控制面板：封面、进度、传输控制与音量 <br> ![托盘面板](docs/screenshots/tray-panel.png) | 同一面板的深色主题 <br> ![托盘面板深色](docs/screenshots/tray-panel-dark.png) |
-| 宽窗口 / 最大化：内容区居中收拢，不再被拉散 <br> ![宽窗口](docs/screenshots/wide-window.png) | 界面缩放：跟随桌面 200% / 手动 100%–250% <br> ![界面缩放](docs/screenshots/ui-scale.png) |
-| 高分屏（桌面 200% 缩放）下的实际渲染 <br> ![HiDPI](docs/screenshots/hidpi-200.png) | |
+| 横屏 · 首页：推荐与热歌卡片两两并排 <br> ![横屏首页](docs/screenshots/landscape-home.png) | 横屏 · 设置：两栏排版，不用滚很久 <br> ![横屏设置](docs/screenshots/landscape-settings.png) |
+| 横屏 · 播放页：封面与歌词并排 <br> ![横屏播放页](docs/screenshots/landscape-nowplaying.png) | 横屏 · 探索：标签按宽度自动折行铺满 <br> ![横屏探索](docs/screenshots/landscape-explore.png) |
+| 界面缩放：跟随桌面 200% / 手动 100%–250% <br> ![界面缩放](docs/screenshots/ui-scale.png) | 高分屏（桌面 200% 缩放）下的实际渲染 <br> ![HiDPI](docs/screenshots/hidpi-200.png) |
 
 ## 功能清单
 
@@ -60,6 +63,8 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 歌曲下载到本地 | ✅ 单曲 / 批量下载、进度与取消重试、离线播放、下载分栏与管理面板 |
 | 后台常驻与系统控制 | ✅ 托盘常驻后台播放 + 主题化托盘控制面板 + 系统媒体控制（MPRIS，媒体键 / 桌面媒体组件 / playerctl） |
 | 界面缩放（HiDPI） | ✅ 跟随桌面缩放（Xft.dpi / GDK_SCALE / sun.java2d.uiScale），或手动 100% ~ 250%（设置 → 界面） |
+| 横屏（宽窗口）自适应 | ✅ 窗口 ≥ 900 dp 自动切多栏：设置两栏、首页卡片并排、歌词限宽居中；窄窗口保持单栏 |
+| 内存占用 | ✅ 封面按需缩放解码（最长边 768 px）+ 64 MB 字节预算缓存；安装版堆上限 512 MB 并定期归还内存 |
 
 ### 与原 Android 应用的差异
 
@@ -78,6 +83,20 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | `Ctrl` + `L` | 开关悬浮歌词 |
 
 ## 使用说明
+
+### 横屏 / 宽窗口布局
+
+窗口内容宽度达到 **900 dp** 时自动切换到横屏排版，把横向空间真正用起来；把窗口拖窄回单栏的紧凑排版。
+两种排版共用同一套控件，拖动窗口边缘就能实时切换。
+
+| 页面 | 紧凑（窄窗口） | 横屏（宽窗口 / 最大化） |
+| --- | --- | --- |
+| 设置 | 单列长列表 | 左右两栏（账号 · 主题 / 界面 · 播放） |
+| 首页 | 歌曲卡片单列 | 卡片两两并排 |
+| 探索 | 标签一行 6 个 | 按宽度自动折行铺满，推荐歌单一行放更多 |
+| 播放页 | 封面在上、歌词在下 | 封面与歌词左右并排，封面更大 |
+| 全屏歌词 | 占满窗口 | 正文限宽居中，避免一行横跨整屏难扫读 |
+| 媒体库 / 统计 / 最近播放 / 下载 | 单列列表 | 列表铺满窗口，不再收在中间一条窄列里 |
 
 ### 登录网易云与哔哩哔哩
 
@@ -192,6 +211,9 @@ python3 tools/mock_github.py 8765    # 无 Token 时用本地 GitHub API 模拟�
 
 界面回归通过脚本驱动：设置环境变量 `NERIPLAYER_UI_TEST="tab:library;play:0;pause;sleep:9000;expect-paused"`
 即可让应用自动执行一串操作并输出断言结果，便于在无人值守环境下验证界面行为。
+脚本里还能插入 `mem-report` 打印一次内存快照（JVM 堆 / 进程常驻内存 / 封面缓存占用），
+用来做内存占用的回归对比；`work/tools/measure-memory.sh` 与 `work/tools/analyze-memory.sh`
+（在交付工作区中）则按时间采样 RSS / PSS 并对内存映射做拆解。
 
 ## 代码结构
 

@@ -81,8 +81,9 @@ fun NeriBottomBar(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        // 窗口比内容区还宽时，把导航栏收拢成居中的浮动条，避免四个入口被拉到屏幕两端
-        val constrain = maxWidth > AppContentMaxWidth
+        // 窄窗口下比内容区还宽时，把导航栏收拢成居中的浮动条，避免四个入口被拉到屏幕两端；
+        // 横屏（宽窗口）布局下导航栏铺满窗口，和内容一起适应窗口宽度。
+        val constrain = !isWideAppLayout && maxWidth > AppContentMaxWidth
         val items: @Composable RowScope.() -> Unit = {
             MainTab.entries.forEach { tab ->
                 NavigationBarItem(
@@ -129,7 +130,7 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     if (song == null) return
-    // 宽窗口下迷你播放器同样居中收拢，不随窗口无限拉伸
+    // 窄窗口下迷你播放器居中收拢；横屏布局下铺满内容区，形成一条完整的播放条
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         MiniPlayerCard(
             song = song,
@@ -155,10 +156,13 @@ private fun MiniPlayerCard(
     onPrevious: () -> Unit,
     onOpen: () -> Unit,
 ) {
+    val widthModifier = if (isWideAppLayout) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.widthIn(max = AppContentMaxWidth).fillMaxWidth()
+    }
     Surface(
-        modifier = Modifier
-            .widthIn(max = AppContentMaxWidth)
-            .fillMaxWidth()
+        modifier = widthModifier
             .padding(horizontal = 8.dp, vertical = 4.dp),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,

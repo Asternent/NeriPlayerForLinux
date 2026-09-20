@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,9 +60,11 @@ import moe.ouom.neriplayer.desktop.net.NeteaseHomeData
 import moe.ouom.neriplayer.desktop.ui.CollectionCard
 import moe.ouom.neriplayer.desktop.ui.EmptyState
 import moe.ouom.neriplayer.desktop.ui.ErrorCard
+import moe.ouom.neriplayer.desktop.ui.ResponsivePair
 import moe.ouom.neriplayer.desktop.ui.SectionHeader
 import moe.ouom.neriplayer.desktop.ui.SongArtwork
 import moe.ouom.neriplayer.desktop.ui.SongRow
+import moe.ouom.neriplayer.desktop.ui.isWideAppLayout
 import kotlin.random.Random
 
 private val BRAND_TITLES = listOf("NeriPlayer", "音理音理!!", "音理音理~")
@@ -107,6 +110,34 @@ fun HomeScreen(
         historyEntries.sortedByDescending { it.playCount }.map { it.song }
             .filter { it.source == MediaSource.LOCAL }.take(12)
     }
+
+    // 首页的「歌曲卡片」区块：横屏（宽窗口）布局下两两并排，窄窗口下仍是单列
+    val online = neteaseData
+    val recommendedSongs = online?.recommendedSongs.orEmpty()
+    val topSongs = online?.topSongs.orEmpty()
+    val newSongs = online?.newSongs.orEmpty()
+    val radarPlaylists = online?.radarPlaylists.orEmpty()
+    val hotPlaylists = online?.hotPlaylists.orEmpty()
+    val songCardSections = buildList {
+        if (favoriteSongs.isNotEmpty()) {
+            add(HomeSongSectionData("我喜欢的音乐（${favoriteSongs.size} 首）", Icons.Outlined.Star, favoriteSongs))
+        }
+        if (recommendedSongs.isNotEmpty()) {
+            add(HomeSongSectionData("为你推荐", Icons.Outlined.Recommend, recommendedSongs))
+        }
+        if (topSongs.isNotEmpty()) {
+            add(HomeSongSectionData("热歌榜", Icons.Outlined.LocalFireDepartment, topSongs))
+        }
+        if (newSongs.isNotEmpty()) {
+            add(HomeSongSectionData("推荐新歌", Icons.Outlined.Recommend, newSongs))
+        }
+        if (mostPlayedLocal.isNotEmpty()) {
+            add(HomeSongSectionData("常听本地歌曲", Icons.Outlined.History, mostPlayedLocal))
+        }
+    }
+    // 横屏布局下每行两段，窄窗口下仍是一行一段
+    val songCardColumns = if (isWideAppLayout) 2 else 1
+    val isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING
 
     Box(modifier.fillMaxSize()) {
         LazyColumn(
@@ -157,103 +188,74 @@ fun HomeScreen(
                 }
             }
 
-            val continueSongs = continueEntries.map { it.song }
-            if (favoriteSongs.isNotEmpty()) {
-                item {
-                    SectionHeader(title = "我喜欢的音乐（${favoriteSongs.size} 首）", icon = Icons.Outlined.Star)
-                }
-                item {
-                    SongListCard(
-                        songs = favoriteSongs.take(6),
-                        currentSong = currentSong,
-                        isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
-                        onPlay = { song -> container.player.playSongNow(song, favoriteSongs) },
-                    )
-                }
-            }
-
             if (settings.neteaseEnabled) {
-                val data = neteaseData
-                if (data?.error != null) {
+                if (online?.error != null) {
                     item {
                         ErrorCard(
-                            message = "加载在线推荐失败：${data.error}",
+                            message = "加载在线推荐失败：${online.error}",
                             onRetry = { refreshToken += 1 },
                         )
                     }
                 }
-                if (loading && data == null) {
+                if (loading && online == null) {
                     item { LoadingSection("正在为你加载首页推荐…") }
                 }
-                if (!data?.recommendedSongs.isNullOrEmpty()) {
-                    item { SectionHeader(title = "为你推荐", icon = Icons.Outlined.Recommend) }
-                    item {
-                        SongListCard(
-                            songs = data!!.recommendedSongs.take(6),
-                            currentSong = currentSong,
-                            isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
-                            onPlay = { song -> container.player.playSongNow(song, data!!.recommendedSongs) },
+            }
+
+            songCardSections.chunked(songCardColumns).forEachIndexed { index, chunk ->
+                item(key = "home-song-section-$index") {
+                    if (chunk.size == 2) {
+                        ResponsivePair(
+                            first = {
+                                HomeSongSection(
+                                    section = chunk[0],
+                                    currentSong = currentSong,
+                                    isPlaying = isPlaying,
+                                    onPlay = { song -> container.player.playSongNow(song, chunk[0].songs) },
+                                )
+                            },
+                            second = {
+                                HomeSongSection(
+                                    section = chunk[1],
+                                    currentSong = currentSong,
+                                    isPlaying = isPlaying,
+                                    onPlay = { song -> container.player.playSongNow(song, chunk[1].songs) },
+                                )
+                            },
                         )
-                    }
-                }
-                if (!data?.topSongs.isNullOrEmpty()) {
-                    item { SectionHeader(title = "热歌榜", icon = Icons.Outlined.LocalFireDepartment) }
-                    item {
-                        SongListCard(
-                            songs = data!!.topSongs.take(6),
+                    } else {
+                        HomeSongSection(
+                            section = chunk[0],
                             currentSong = currentSong,
-                            isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
-                            onPlay = { song -> container.player.playSongNow(song, data!!.topSongs) },
+                            isPlaying = isPlaying,
+                            onPlay = { song -> container.player.playSongNow(song, chunk[0].songs) },
                         )
-                    }
-                }
-                if (!data?.newSongs.isNullOrEmpty()) {
-                    item { SectionHeader(title = "推荐新歌", icon = Icons.Outlined.Recommend) }
-                    item {
-                        SongListCard(
-                            songs = data!!.newSongs.take(6),
-                            currentSong = currentSong,
-                            isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
-                            onPlay = { song -> container.player.playSongNow(song, data!!.newSongs) },
-                        )
-                    }
-                }
-                if (!data?.radarPlaylists.isNullOrEmpty()) {
-                    item { SectionHeader(title = "私人雷达", icon = Icons.Outlined.Recommend) }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(data!!.radarPlaylists, key = { it.id }) { collection ->
-                                CollectionCard(collection, onClick = { onOpenPlaylist(collection) })
-                            }
-                        }
-                    }
-                }
-                if (!data?.hotPlaylists.isNullOrEmpty()) {
-                    item { SectionHeader(title = "热门榜单") }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(data!!.hotPlaylists, key = { it.id }) { collection ->
-                                CollectionCard(collection, onClick = { onOpenPlaylist(collection) })
-                            }
-                        }
                     }
                 }
             }
 
-            if (mostPlayedLocal.isNotEmpty()) {
-                item { SectionHeader(title = "常听本地歌曲", icon = Icons.Outlined.History) }
-                item {
-                    SongListCard(
-                        songs = mostPlayedLocal.take(6),
-                        currentSong = currentSong,
-                        isPlaying = playbackState == moe.ouom.neriplayer.desktop.core.PlaybackState.PLAYING,
-                        onPlay = { song -> container.player.playSongNow(song, mostPlayedLocal) },
+            if (radarPlaylists.isNotEmpty() || hotPlaylists.isNotEmpty()) {
+                item(key = "home-online-collections") {
+                    ResponsivePair(
+                        first = {
+                            if (radarPlaylists.isNotEmpty()) {
+                                OnlineCollectionRow(
+                                    title = "私人雷达",
+                                    icon = Icons.Outlined.Recommend,
+                                    collections = radarPlaylists,
+                                    onOpen = onOpenPlaylist,
+                                )
+                            }
+                        },
+                        second = {
+                            if (hotPlaylists.isNotEmpty()) {
+                                OnlineCollectionRow(
+                                    title = "热门榜单",
+                                    collections = hotPlaylists,
+                                    onOpen = onOpenPlaylist,
+                                )
+                            }
+                        },
                     )
                 }
             }
@@ -297,6 +299,52 @@ private fun LoadingSection(text: String) {
         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
         Spacer(Modifier.width(10.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 首页的一段「歌曲卡片」区块（标题 + 歌曲列表卡片）。 */
+private data class HomeSongSectionData(
+    val title: String,
+    val icon: ImageVector?,
+    val songs: List<Song>,
+)
+
+@Composable
+private fun HomeSongSection(
+    section: HomeSongSectionData,
+    currentSong: Song?,
+    isPlaying: Boolean,
+    onPlay: (Song) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionHeader(title = section.title, icon = section.icon)
+        SongListCard(
+            songs = section.songs.take(6),
+            currentSong = currentSong,
+            isPlaying = isPlaying,
+            onPlay = onPlay,
+        )
+    }
+}
+
+/** 首页的一段在线歌单横排区块（标题 + 横向滚动的歌单卡片）。 */
+@Composable
+private fun OnlineCollectionRow(
+    title: String,
+    collections: List<OnlineCollection>,
+    onOpen: (OnlineCollection) -> Unit,
+    icon: ImageVector? = null,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionHeader(title = title, icon = icon)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(collections, key = { it.id }) { collection ->
+                CollectionCard(collection, onClick = { onOpen(collection) })
+            }
+        }
     }
 }
 

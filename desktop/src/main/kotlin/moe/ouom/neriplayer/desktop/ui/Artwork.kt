@@ -29,21 +29,54 @@ import kotlinx.coroutines.withContext
 import moe.ouom.neriplayer.desktop.core.AppDirs
 import moe.ouom.neriplayer.desktop.core.MediaSource
 import moe.ouom.neriplayer.desktop.core.Song
+import java.io.ByteArrayInputStream
 import java.io.File
+import javax.imageio.ImageIO
 
-private const val MAX_ARTWORK_ENTRIES = 180
+/**
+ * 封面解码后的最长边上限（像素）。
+ *
+ * 在线音源的封面经常是 3000×3000 / 4096×4096，整张解码出来单张就要 34~64 MB；
+ * 而界面上最大的封面（播放页，2.5 倍缩放）也只需要 700 像素上下，
+ * 所以这里统一按最长边缩放解码，单张封面的内存从几十 MB 降到 2 MB 以内。
+ */
+private const val ARTWORK_MAX_PX = 768
+
+/** 封面缓存的字节预算：按实际像素占用淘汰，避免大封面把内存顶满。 */
+private const val ARTWORK_CACHE_BUDGET_BYTES = 64L * 1024 * 1024
+
+/** 条目数上限（小封面可能很多，再加一道保险）。 */
+private const val MAX_ARTWORK_ENTRIES = 320
+
 private const val ARTWORK_FAILURE_TTL_MS = 60_000L
 
 private object ArtworkCache {
-    private val memory = object : LinkedHashMap<String, ImageBitmap>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>): Boolean =
-            size > MAX_ARTWORK_ENTRIES
-    }
+    /** 访问顺序的 LRU；淘汰由 [put] 里的循环按「字节预算 + 条目上限」执行。 */
+    private val memory = LinkedHashMap<String, ImageBitmap>(64, 0.75f, true)
+    private var bytes = 0L
     private val failed = HashMap<String, Long>()
 
     fun get(key: String): ImageBitmap? = synchronized(memory) { memory[key] }
 
-    fun put(key: String, bitmap: ImageBitmap) = synchronized(memory) { memory[key] = bitmap }
+    fun put(key: String, bitmap: ImageBitmap) = synchronized(memory) {
+        memory.remove(key)?.let { previous -> bytes -= sizeOf(previous) }
+        memory[key] = bitmap
+        bytes += sizeOf(bitmap)
+        // 一次可能淘汰多张：大封面进来时要立刻把预算压回上限之内
+        val iterator = memory.entries.iterator()
+        while (iterator.hasNext() &&
+            (bytes > ARTWORK_CACHE_BUDGET_BYTES || memory.size > MAX_ARTWORK_ENTRIES)
+        ) {
+            val eldest = iterator.next()
+            bytes -= sizeOf(eldest.value)
+            iterator.remove()
+        }
+    }
+
+    /** 缓存统计，供自检与内存回归对比使用。 */
+    fun stats(): String = synchronized(memory) {
+        "封面缓存 ${memory.size} 张 / ${bytes / 1048576} MB"
+    }
 
     /** 失败记录带过期时间，网络抖动恢复后可以自动重试。 */
     fun hasFailed(key: String): Boolean = synchronized(failed) {
@@ -62,15 +95,52 @@ private object ArtworkCache {
 private fun artworkCacheKey(song: Song): String =
     song.key + "|" + (song.artworkPath ?: song.artworkUrl ?: "")
 
-private fun decode(bytes: ByteArray): ImageBitmap? =
-    runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+private fun sizeOf(bitmap: ImageBitmap): Long = bitmap.width.toLong() * bitmap.height * 4L
+
+/**
+ * 按最长边 [maxPx] 解码：优先用 ImageIO 带子采样读取，
+ * 这样 4096×4096 的封面在解码阶段就只产出 768×768 的位图，不会先吃掉 64 MB。
+ * ImageIO 不认识的格式（例如 WebP）退回 Skia 全尺寸解码。
+ */
+/** 封面解码入口：按最长边 [maxPx] 缩放，避免超大封面整张进内存（自检也会直接调用）。 */
+fun decodeArtwork(bytes: ByteArray, maxPx: Int = ARTWORK_MAX_PX): ImageBitmap? {
+    decodeDownscaled(bytes, maxPx)?.let { return it }
+    return runCatching {
+        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
+    }.getOrNull()
+}
+
+/** 封面缓存统计（供自检 / 内存回归对比使用）。 */
+fun artworkCacheStats(): String = ArtworkCache.stats()
+
+private fun decodeDownscaled(bytes: ByteArray, maxPx: Int): ImageBitmap? = runCatching {
+    ImageIO.createImageInputStream(ByteArrayInputStream(bytes))?.use { stream ->
+        val readers = ImageIO.getImageReaders(stream)
+        if (!readers.hasNext()) return@use null
+        val reader = readers.next()
+        try {
+            reader.input = stream
+            val width = reader.getWidth(0)
+            val height = reader.getHeight(0)
+            val longest = maxOf(width, height)
+            val param = reader.defaultReadParam
+            if (longest > maxPx) {
+                val step = kotlin.math.ceil(longest / maxPx.toDouble()).toInt().coerceAtLeast(1)
+                param.setSourceSubsampling(step, step, 0, 0)
+            }
+            reader.read(0, param)?.toComposeImageBitmap()
+        } finally {
+            reader.dispose()
+        }
+    }
+}.getOrNull()
 
 private suspend fun loadRemoteBitmap(url: String, referer: String? = null): ImageBitmap? =
     withContext(Dispatchers.IO) {
         val cached = File(AppDirs.coverDir, url.hashCode().toString() + ".img")
         if (cached.isFile) {
             runCatching { cached.readBytes() }.getOrNull()?.let { bytes ->
-                decode(bytes)?.let { return@withContext it }
+                decodeArtwork(bytes)?.let { return@withContext it }
             }
         }
         val bytes = runCatching {
@@ -83,7 +153,7 @@ private suspend fun loadRemoteBitmap(url: String, referer: String? = null): Imag
             connection.getInputStream().use { it.readBytes() }
         }.getOrNull() ?: return@withContext null
         runCatching { cached.writeBytes(bytes) }
-        decode(bytes)
+        decodeArtwork(bytes)
     }
 
 private suspend fun loadSongArtwork(song: Song): ImageBitmap? = withContext(Dispatchers.IO) {
@@ -92,7 +162,7 @@ private suspend fun loadSongArtwork(song: Song): ImageBitmap? = withContext(Disp
         val file = File(localPath)
         if (file.isFile) {
             runCatching { file.readBytes() }.getOrNull()?.let { bytes ->
-                decode(bytes)?.let { return@withContext it }
+                decodeArtwork(bytes)?.let { return@withContext it }
             }
         }
     }

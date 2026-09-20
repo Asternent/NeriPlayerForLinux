@@ -3,6 +3,9 @@ package moe.ouom.neriplayer.desktop.core
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
+/** 内存中保留的歌词上限（超出后按最近最少使用淘汰）。 */
+private const val MAX_LYRICS_CACHE = 120
+
 /** LRC 歌词解析（支持一行多时间标签、翻译行合并与 offset 偏移）。 */
 object LrcParser {
 
@@ -84,37 +87,42 @@ object LrcParser {
 class LyricsRepository(
     private val remoteProvider: suspend (Song) -> Pair<String, String?>? = { null },
 ) {
-    private val cache = ConcurrentHashMap<String, Lyrics>()
+    // 歌词缓存按 LRU 限长：听歌久了缓存会一直涨，而歌词只在当前/最近几首之间来回用
+    private val cache = object : LinkedHashMap<String, Lyrics>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Lyrics>): Boolean =
+            size > MAX_LYRICS_CACHE
+    }
+    private val cacheLock = Any()
     private val missCache = ConcurrentHashMap.newKeySet<String>()
 
-    fun cached(song: Song): Lyrics? = cache[song.key]
+    fun cached(song: Song): Lyrics? = synchronized(cacheLock) { cache[song.key] }
 
     fun put(song: Song, lyrics: Lyrics) {
-        cache[song.key] = lyrics
+        synchronized(cacheLock) { cache[song.key] = lyrics }
     }
 
     fun invalidate(song: Song) {
-        cache.remove(song.key)
+        synchronized(cacheLock) { cache.remove(song.key) }
         missCache.remove(song.key)
     }
 
     suspend fun load(song: Song): Lyrics {
-        cache[song.key]?.let { return it }
+        synchronized(cacheLock) { cache[song.key] }?.let { return it }
         localLyrics(song)?.let { lyrics ->
-            cache[song.key] = lyrics
+            synchronized(cacheLock) { cache[song.key] = lyrics }
             return lyrics
         }
         if (song.key !in missCache) {
             val remote = runCatching { remoteProvider(song) }.getOrNull()
             if (remote != null && remote.first.isNotBlank()) {
                 val lyrics = fromRaw(remote.first, remote.second, source = song.source.displayName)
-                cache[song.key] = lyrics
+                synchronized(cacheLock) { cache[song.key] = lyrics }
                 return lyrics
             }
             missCache += song.key
         }
         val empty = Lyrics()
-        cache[song.key] = empty
+        synchronized(cacheLock) { cache[song.key] = empty }
         return empty
     }
 

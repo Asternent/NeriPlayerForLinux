@@ -674,4 +674,34 @@ private fun checkSyncSerializerAndMerge() {
         ),
     ).playlists.first().songs
     check("sync-merge-deletion-tombstone", afterDeletion.size == 1 && afterDeletion.first().id == songA.id)
+
+    checkArtworkDownscale()
+}
+
+/**
+ * 封面解码回归：在线音源的封面常见 3000×3000 甚至 4096×4096，
+ * 整张解码单张就要 34~64 MB，必须按最长边缩放后再进缓存。
+ */
+private fun checkArtworkDownscale() {
+    val side = 3000
+    val image = java.awt.image.BufferedImage(side, side, java.awt.image.BufferedImage.TYPE_INT_RGB)
+    image.createGraphics().apply {
+        color = java.awt.Color(176, 58, 92)
+        fillRect(0, 0, side, side)
+        dispose()
+    }
+    val buffer = java.io.ByteArrayOutputStream()
+    val written = runCatching { javax.imageio.ImageIO.write(image, "jpg", buffer) }.getOrDefault(false)
+    if (!written) {
+        check("artwork-downscale", false, "无法生成测试用 JPEG（缺少 ImageIO 写出支持）")
+        return
+    }
+    val decoded = moe.ouom.neriplayer.desktop.ui.decodeArtwork(buffer.toByteArray())
+    val longest = decoded?.let { maxOf(it.width, it.height) } ?: 0
+    check(
+        "artwork-downscale",
+        longest in 1..768,
+        "3000×3000 → ${decoded?.width}×${decoded?.height}（单张 ${longest.toLong() * longest * 4 / 1048576} MB）",
+    )
+    log("artwork cache: ${moe.ouom.neriplayer.desktop.ui.artworkCacheStats()}")
 }

@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "moe.ouom.neriplayer"
-version = "1.4.3"
+version = "1.4.4"
 
 kotlin {
     jvmToolchain(17)
@@ -189,11 +189,21 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "moe.ouom.neriplayer.desktop.MainKt"
-        jvmArgs += listOf("-Dfile.encoding=UTF-8")
+        jvmArgs += listOf(
+            "-Dfile.encoding=UTF-8",
+            // 内存占用：封顶堆与元空间（默认是物理内存的 1/4，长时间使用会一路涨上去），
+            // 并让 G1 定期回收后把空闲堆还给系统
+            "-Xmx512m",
+            "-XX:MaxMetaspaceSize=192m",
+            "-XX:+UseG1GC",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=40",
+            "-XX:G1PeriodicGCInterval=120000",
+        )
         nativeDistributions {
             targetFormats(TargetFormat.Deb)
             packageName = "NeriPlayer"
-            packageVersion = "1.4.3"
+            packageVersion = "1.4.4"
             description = "NeriPlayer 音理音理 — Linux 原生 Compose Desktop 音乐播放器"
             vendor = "NeriPlayer Desktop"
             copyright = "GPL-3.0-only"

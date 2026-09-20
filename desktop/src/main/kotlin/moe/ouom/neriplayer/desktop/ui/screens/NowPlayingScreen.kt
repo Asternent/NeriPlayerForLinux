@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -74,6 +75,8 @@ import moe.ouom.neriplayer.desktop.ui.QueuePanel
 import moe.ouom.neriplayer.desktop.ui.SleepTimerPanel
 import moe.ouom.neriplayer.desktop.ui.SongArtwork
 import moe.ouom.neriplayer.desktop.ui.VolumePanel
+import moe.ouom.neriplayer.desktop.ui.AppLyricsMaxWidth
+import moe.ouom.neriplayer.desktop.ui.isWideAppLayout
 
 @Composable
 fun NowPlayingScreen(
@@ -121,6 +124,16 @@ fun NowPlayingScreen(
             "more" -> showMore = true
             "add" -> showAddToPlaylist = true
             "lyrics" -> showFullLyrics = true
+            // 自动化脚本用：一次性关掉播放页上所有浮层，便于连续截图
+            "close" -> {
+                showQueue = false
+                showVolume = false
+                showSleepTimer = false
+                showEffects = false
+                showMore = false
+                showAddToPlaylist = false
+                showFullLyrics = false
+            }
             null -> Unit
         }
     }
@@ -273,15 +286,22 @@ fun NowPlayingScreen(
                             }
                         }) { Text("A-") }
                     }
-                    LyricsPane(
-                        lines = lyrics.lines,
-                        currentIndex = lyricIndex,
-                        loading = lyricsLoading,
-                        fontScale = settings.lyricsFontScale,
-                        showTranslation = settings.showLyricTranslation,
-                        onSeekLine = { container.player.seekTo(it) },
-                        modifier = Modifier.weight(1f),
-                    )
+                    // 横屏（宽窗口）下歌词正文限宽居中：一行拉满整个屏幕宽度会很难扫读
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        LyricsPane(
+                            lines = lyrics.lines,
+                            currentIndex = lyricIndex,
+                            loading = lyricsLoading,
+                            fontScale = settings.lyricsFontScale,
+                            showTranslation = settings.showLyricTranslation,
+                            onSeekLine = { container.player.seekTo(it) },
+                            modifier = if (isWideAppLayout) {
+                                Modifier.fillMaxHeight().widthIn(max = AppLyricsMaxWidth)
+                            } else {
+                                Modifier.fillMaxSize()
+                            },
+                        )
+                    }
                     if (!song?.filePath.isNullOrBlank()) {
                         Text(
                             text = song?.filePath.orEmpty(),

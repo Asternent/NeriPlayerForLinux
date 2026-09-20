@@ -4,6 +4,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,6 +61,7 @@ import moe.ouom.neriplayer.desktop.ui.ErrorCard
 import moe.ouom.neriplayer.desktop.ui.RemoteArtwork
 import moe.ouom.neriplayer.desktop.ui.SectionHeader
 import moe.ouom.neriplayer.desktop.ui.SongRow
+import moe.ouom.neriplayer.desktop.ui.TagFlow
 
 private val SEARCH_SOURCES = listOf(
     MediaSource.NETEASE to "网易云",
@@ -269,41 +272,32 @@ private fun DefaultExploreContent(
                 )
             }
             item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(searchHistory) { keyword ->
-                        FilterChip(selected = false, onClick = { onKeyword(keyword) }, label = { Text(keyword) })
-                    }
-                }
+                TagFlow(
+                    tags = searchHistory,
+                    onKeyword = onKeyword,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
         }
         if (hotKeywords.isNotEmpty()) {
             item { SectionHeader(title = "热门搜索", icon = Icons.Outlined.LocalFireDepartment) }
             item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(hotKeywords.take(16)) { keyword ->
-                        FilterChip(selected = false, onClick = { onKeyword(keyword) }, label = { Text(keyword) })
-                    }
-                }
+                TagFlow(
+                    tags = hotKeywords.take(16),
+                    onKeyword = onKeyword,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
         }
         item { SectionHeader(title = "风格标签") }
         item {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                TAG_KEYWORDS.chunked(6).forEach { rowTags ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowTags.forEach { tag ->
-                            FilterChip(selected = false, onClick = { onKeyword(tag) }, label = { Text(tag) })
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                }
-            }
+            // 用流式布局让标签自己填满可用宽度：窄窗口自动换行，横屏（宽窗口）一行放更多，
+            // 不会像固定 6 个一行那样在右侧留出大片空白。
+            TagFlow(
+                tags = TAG_KEYWORDS,
+                onKeyword = onKeyword,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
         }
         if (recommended.isNotEmpty()) {
             item { SectionHeader(title = "推荐歌单（网易云）") }

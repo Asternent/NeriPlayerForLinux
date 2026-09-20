@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +73,7 @@ import moe.ouom.neriplayer.desktop.core.MediaSource
 import moe.ouom.neriplayer.desktop.core.UiScale
 import moe.ouom.neriplayer.desktop.core.displayName
 import moe.ouom.neriplayer.desktop.ui.AccountRow
+import moe.ouom.neriplayer.desktop.ui.isWideAppLayout
 import moe.ouom.neriplayer.desktop.ui.EqualizerPresets
 import moe.ouom.neriplayer.desktop.ui.LoginDialog
 import moe.ouom.neriplayer.desktop.ui.SyncSettingsSection
@@ -104,11 +107,14 @@ fun SettingsScreen(
     val accounts by container.accounts.state.collectAsState()
     var seedInput by remember(settings.themeSeedColor) { mutableStateOf(settings.themeSeedColor) }
 
-    LazyColumn(
+    // 横屏（宽窗口）布局下改成两栏，让设置项铺满窗口而不是拉成一条长列表
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(if (isWideAppLayout) 2 else 1),
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 32.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { TopAppBar(title = { Text("设置") }) }
+        item(span = { GridItemSpan(maxLineSpan) }) { TopAppBar(title = { Text("设置") }) }
 
         item {
             AccountSettingsSection(
@@ -120,107 +126,8 @@ fun SettingsScreen(
 
         item {
             SettingsSection(
-                title = "主题设置",
-                description = "深浅色、动态取色和主题调色",
-                icon = Icons.Outlined.ColorLens,
-            ) {
-                SettingLabel("深浅色模式")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        DarkModeSetting.LIGHT to "浅色",
-                        DarkModeSetting.DARK to "深色",
-                        DarkModeSetting.AUTO to "跟随系统",
-                    ).forEach { (mode, label) ->
-                        FilterChip(
-                            selected = settings.darkMode == mode,
-                            onClick = { container.settings.update { it.copy(darkMode = mode) } },
-                            label = { Text(label) },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                SwitchRow(
-                    title = "动态取色",
-                    description = "跟随当前歌曲封面主题色（无封面时使用下方主题色）",
-                    checked = settings.dynamicColor,
-                    onCheckedChange = { enabled -> container.settings.update { it.copy(dynamicColor = enabled) } },
-                )
-                Spacer(Modifier.height(12.dp))
-                SettingLabel("主题色")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PRESET_SEED_COLORS.forEach { hex ->
-                        val selected = settings.themeSeedColor.equals(hex, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(colorFromHex(hex))
-                                .border(
-                                    width = if (selected) 3.dp else 1.dp,
-                                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = CircleShape,
-                                )
-                                .clickable {
-                                    container.settings.update { it.copy(themeSeedColor = hex, dynamicColor = false) }
-                                },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = seedInput,
-                        onValueChange = { seedInput = it.uppercase().removePrefix("#").take(6) },
-                        label = { Text("自定义主题色（6 位 HEX）") },
-                        singleLine = true,
-                        modifier = Modifier.width(240.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    TextButton(onClick = {
-                        val sanitized = sanitizeSeedColorHex(seedInput)
-                        container.settings.update { it.copy(themeSeedColor = sanitized, dynamicColor = false) }
-                        seedInput = sanitized
-                        showMessage("主题色已更新为 #$sanitized")
-                    }) { Text("应用") }
-                }
-                Spacer(Modifier.height(14.dp))
-                SettingLabel("色彩风格")
-                Column {
-                    PALETTE_STYLES.chunked(3).forEach { rowStyles ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
-                            rowStyles.forEach { style ->
-                                FilterChip(
-                                    selected = settings.paletteStyle == style,
-                                    onClick = { container.settings.update { it.copy(paletteStyle = style) } },
-                                    label = { Text(paletteStyleLabel(style)) },
-                                )
-                            }
-                        }
-                    }
-                }
-                Text(
-                    text = paletteStyleDescription(settings.paletteStyle),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(14.dp))
-                SettingLabel("色彩空间")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    COLOR_SPECS.forEach { spec ->
-                        FilterChip(
-                            selected = settings.colorSpec == spec,
-                            onClick = { container.settings.update { it.copy(colorSpec = spec) } },
-                            label = { Text(if (spec == "SPEC_2025") "2025" else "2021") },
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            SettingsSection(
                 title = "界面",
-                description = "界面缩放（高分屏适配）",
+                description = "界面缩放与窗口排版（高分屏 / 横屏适配）",
                 icon = Icons.Outlined.AspectRatio,
             ) {
                 val systemScale = UiScale.systemScale()
@@ -272,12 +179,119 @@ fun SettingsScreen(
                         if (settings.uiScale <= 0f) UiScale.source else "设置中手动指定",
                 )
                 InfoRow(
+                    label = "布局",
+                    value = if (isWideAppLayout) "横屏（宽窗口，内容铺满 + 多栏）" else "紧凑（窄窗口，单栏）",
+                )
+                InfoRow(
                     label = "屏幕",
                     value = runCatching {
                         val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
                         "${screen.width}×${screen.height} 像素"
                     }.getOrDefault("未知"),
                 )
+            }
+        }
+
+        item {
+            SettingsSection(
+                title = "主题设置",
+                description = "深浅色、动态取色和主题调色",
+                icon = Icons.Outlined.ColorLens,
+            ) {
+                SettingLabel("深浅色模式")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        DarkModeSetting.LIGHT to "浅色",
+                        DarkModeSetting.DARK to "深色",
+                        DarkModeSetting.AUTO to "跟随系统",
+                    ).forEach { (mode, label) ->
+                        FilterChip(
+                            selected = settings.darkMode == mode,
+                            onClick = { container.settings.update { it.copy(darkMode = mode) } },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                SwitchRow(
+                    title = "动态取色",
+                    description = "跟随当前歌曲封面主题色（无封面时使用下方主题色）",
+                    checked = settings.dynamicColor,
+                    onCheckedChange = { enabled -> container.settings.update { it.copy(dynamicColor = enabled) } },
+                )
+                Spacer(Modifier.height(12.dp))
+                SettingLabel("主题色")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PRESET_SEED_COLORS.forEach { hex ->
+                        val selected = settings.themeSeedColor.equals(hex, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(colorFromHex(hex))
+                                .border(
+                                    width = if (selected) 3.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = CircleShape,
+                                )
+                                .clickable {
+                                    container.settings.update { it.copy(themeSeedColor = hex, dynamicColor = false) }
+                                },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                SettingLabel("自定义主题色（6 位 HEX）")
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = seedInput,
+                        onValueChange = { seedInput = it.uppercase().removePrefix("#").take(6) },
+                        // 标签文字放不下时会溢出输入框边框，这里只留短标签，完整说明放在上方
+                        label = { Text("色值") },
+                        placeholder = { Text("RRGGBB") },
+                        singleLine = true,
+                        modifier = Modifier.width(240.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    TextButton(onClick = {
+                        val sanitized = sanitizeSeedColorHex(seedInput)
+                        container.settings.update { it.copy(themeSeedColor = sanitized, dynamicColor = false) }
+                        seedInput = sanitized
+                        showMessage("主题色已更新为 #$sanitized")
+                    }) { Text("应用") }
+                }
+                Spacer(Modifier.height(14.dp))
+                SettingLabel("色彩风格")
+                Column {
+                    PALETTE_STYLES.chunked(3).forEach { rowStyles ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                            rowStyles.forEach { style ->
+                                FilterChip(
+                                    selected = settings.paletteStyle == style,
+                                    onClick = { container.settings.update { it.copy(paletteStyle = style) } },
+                                    label = { Text(paletteStyleLabel(style)) },
+                                )
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = paletteStyleDescription(settings.paletteStyle),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(14.dp))
+                SettingLabel("色彩空间")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    COLOR_SPECS.forEach { spec ->
+                        FilterChip(
+                            selected = settings.colorSpec == spec,
+                            onClick = { container.settings.update { it.copy(colorSpec = spec) } },
+                            label = { Text(if (spec == "SPEC_2025") "2025" else "2021") },
+                        )
+                    }
+                }
             }
         }
 
@@ -571,13 +585,13 @@ fun SettingsScreen(
             }
         }
 
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             SettingsSection(
                 title = "关于",
                 description = "版本信息、运行环境与数据管理",
                 icon = Icons.Outlined.Info,
             ) {
-                InfoRow("应用版本", "NeriPlayer Desktop 1.4.3")
+                InfoRow("应用版本", "NeriPlayer Desktop 1.4.4")
                 InfoRow("音频引擎", if (FfmpegSupport.available) "ffmpeg（${FfmpegSupport.version.take(28)}…）" else "Java Sound 回退引擎")
                 InfoRow("音效支持", if (container.player.supportsEffects) "倍速 / 变调 / 响度 / 均衡器可用" else "当前不可用（缺少 ffmpeg）")
                 InfoRow("数据目录", AppDirs.dataDir.absolutePath)
