@@ -36,6 +36,9 @@ object DesktopTray {
             isImageAutoSize = true
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(event: MouseEvent) {
+                    println(
+                        "[tray] 收到托盘图标点击 button=${event.button} screen=${event.locationOnScreen}"
+                    )
                     when (event.button) {
                         MouseEvent.BUTTON1, MouseEvent.BUTTON3 -> onActivate()
                     }

@@ -76,10 +76,6 @@ import kotlin.math.roundToInt
 private const val PANEL_WIDTH = 340
 private const val PANEL_HEIGHT = 436
 
-/**
- * 后台控制面板：点击托盘图标弹出，完全由应用主题绘制
- * （封面、进度、传输控制、功能入口），替代样式无法跟随主题的原生 AWT 菜单。
- */
 @Composable
 fun TrayControlPanel(
     container: AppContainer,
@@ -222,6 +218,7 @@ private fun FrameWindowScope.PanelContent(
     Surface(
         modifier = Modifier
             .fillMaxSize()
+            // 诊断用：打印面板窗口收到的指针事件（确认点击是否真的到达面板内容）
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),

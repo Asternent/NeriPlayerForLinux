@@ -33,6 +33,7 @@ import moe.ouom.neriplayer.desktop.ui.TrayControlPanel
 import moe.ouom.neriplayer.desktop.ui.setupDesktopLookAndFeel
 import moe.ouom.neriplayer.desktop.core.PlaybackState
 import moe.ouom.neriplayer.desktop.core.UiScale
+import moe.ouom.neriplayer.desktop.core.StatusNotifierService
 import moe.ouom.neriplayer.desktop.ui.ApplyUiScale
 import moe.ouom.neriplayer.desktop.ui.mainWindowSize
 import moe.ouom.neriplayer.desktop.ui.platformUiScale
@@ -46,10 +47,11 @@ fun main() {
         val settings by container.settings.state.collectAsState()
         var mainWindowFocused by remember { mutableStateOf(true) }
         var windowVisible by remember { mutableStateOf(true) }
-        val traySupported = remember { isTrayAvailable() }
         var trayPanelVisible by remember { mutableStateOf(false) }
         val currentSong by container.player.currentSong.collectAsState()
         val playbackState by container.player.state.collectAsState()
+
+
         // 界面缩放：默认跟随桌面（Linux 上 Compose 不读 Xft.dpi，高分屏会只有一半大小）
         val uiScale = remember(settings.uiScale) { UiScale.resolve(settings.uiScale) }
         // 允许通过环境变量覆盖初始窗口尺寸（便于截图与多屏使用）
@@ -62,6 +64,55 @@ fun main() {
             size = windowSize,
             position = WindowPosition(Alignment.Center),
         )
+
+        // 托盘：优先注册状态栏指示器（SNI + DBusMenu，菜单由桌面渲染，GNOME 下点击可靠）；
+        // 桌面不支持时才回退到 AWT 托盘图标（XEmbed，样式与应用一致但 GNOME 上点击易被弹层抢走）
+        val statusNotifier = remember {
+            StatusNotifierService(
+                title = {
+                    container.player.currentSong.value?.let { "NeriPlayer · ${it.displayName()}" }
+                        ?: "NeriPlayer"
+                },
+                playing = { container.player.state.value == PlaybackState.PLAYING },
+                floatingLyricsEnabled = { container.settings.current.floatingLyricsEnabled },
+                onTogglePlay = { container.player.togglePlayPause() },
+                onPrevious = { container.player.previous() },
+                onNext = { container.player.next() },
+                onShowWindow = {
+                    windowVisible = true
+                    windowState.isMinimized = false
+                },
+                onToggleFloatingLyrics = {
+                    container.settings.update { it.copy(floatingLyricsEnabled = !it.floatingLyricsEnabled) }
+                },
+                onOpenDownloads = {
+                    windowVisible = true
+                    windowState.isMinimized = false
+                    AppIntents.openDownloads?.invoke()
+                },
+                onOpenSettings = {
+                    windowVisible = true
+                    windowState.isMinimized = false
+                    AppIntents.openSettings?.invoke()
+                },
+                onOpenPanel = { trayPanelVisible = true },
+                onQuit = {
+                    container.player.persistQueueState()
+                    exitApplication()
+                },
+            ).also { it.start() }
+        }
+        val traySupported = remember { !statusNotifier.running && isTrayAvailable() }
+
+        DisposableEffect(Unit) {
+            onDispose { statusNotifier.stop() }
+        }
+
+        // 歌曲 / 播放状态 / 悬浮歌词开关变化后刷新托盘菜单文案
+        LaunchedEffect(currentSong?.key, playbackState, settings.floatingLyricsEnabled) {
+            statusNotifier.refresh()
+        }
+
         Window(
             onCloseRequest = {
                 if (settings.closeToTray && traySupported) {
@@ -148,6 +199,10 @@ fun main() {
                 windowVisible = true
                 windowState.isMinimized = false
             }
+            AppIntents.hideMainWindow = {
+                // 等价于「关闭窗口收进托盘」：窗口隐藏、播放继续
+                windowVisible = false
+            }
             AppIntents.quit = {
                 container.player.persistQueueState()
                 exitApplication()
@@ -165,6 +220,7 @@ fun main() {
             }
             onDispose {
                 AppIntents.showMainWindow = null
+                AppIntents.hideMainWindow = null
                 AppIntents.quit = null
                 AppIntents.toggleTrayPanel = null
                 container.mpris.onRaise = null
