@@ -102,7 +102,10 @@ fun main() {
                 },
             ).also { it.start() }
         }
-        val traySupported = remember { !statusNotifier.running && isTrayAvailable() }
+        // 「后台常驻可用」：原生指示器或 AWT 托盘任一可用即可（关闭/最小化收进托盘依赖它）
+        val backgroundAvailable = remember { statusNotifier.running || isTrayAvailable() }
+        // 是否需要安装 AWT 托盘图标：仅在原生指示器不可用时才装，避免出现两个图标
+        val awtTraySupported = remember { !statusNotifier.running && isTrayAvailable() }
 
         DisposableEffect(Unit) {
             onDispose { statusNotifier.stop() }
@@ -115,7 +118,7 @@ fun main() {
 
         Window(
             onCloseRequest = {
-                if (settings.closeToTray && traySupported) {
+                if (settings.closeToTray && backgroundAvailable) {
                     // 隐藏窗口但继续在后台播放，与手机端「退回后台仍播放」一致
                     windowVisible = false
                     if (!settings.trayHintShown) {
@@ -159,15 +162,15 @@ fun main() {
         }
 
         // 最小化时隐藏到托盘（仍继续播放）
-        LaunchedEffect(windowState.isMinimized, settings.minimizeToTray, traySupported) {
-            if (windowState.isMinimized && settings.minimizeToTray && traySupported) {
+        LaunchedEffect(windowState.isMinimized, settings.minimizeToTray, backgroundAvailable) {
+            if (windowState.isMinimized && settings.minimizeToTray && backgroundAvailable) {
                 windowState.isMinimized = false
                 windowVisible = false
             }
         }
 
         // 系统托盘：后台播放控制
-        if (traySupported) {
+        if (awtTraySupported) {
             AppTray(
                 container = container,
                 onActivate = { trayPanelVisible = !trayPanelVisible },
@@ -176,7 +179,7 @@ fun main() {
                 container = container,
                 windowVisible = { windowVisible },
             )
-        } else {
+        } else if (!backgroundAvailable) {
             LaunchedEffect(Unit) {
                 println("[tray] 当前桌面环境没有系统托盘，托盘常驻不可用（MPRIS 仍可控制播放）")
             }
