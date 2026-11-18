@@ -134,7 +134,7 @@ object AppApi {
         val syncState = container.sync.state.value
         return buildJsonObject {
             put("protocol", PROTOCOL_VERSION)
-            put("appVersion", "1.4.7")
+            put("appVersion", "2.0.0")
             put("settings", encodeJson(container.settings.current))
             put("theme", themePayload(container))
             put("player", PlayerWire.state(player))
