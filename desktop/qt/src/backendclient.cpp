@@ -222,11 +222,42 @@ void BackendClient::flushOutbox()
 
 bool BackendClient::tryStartBackend()
 {
-    const QByteArray jar = qgetenv("NERIPLAYER_BACKEND_JAR");
-    if (jar.isEmpty() || !QFileInfo::exists(QString::fromLocal8Bit(jar)))
+    // jar：环境变量 > 安装布局（lib/neriplayer/neriplayer-core.jar）> 开发构建产物
+    QString jar = QString::fromLocal8Bit(qgetenv("NERIPLAYER_BACKEND_JAR"));
+    if (jar.isEmpty() || !QFileInfo::exists(jar)) {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        const QStringList candidates = {
+            appDir + QStringLiteral("/neriplayer-core.jar"),
+            appDir + QStringLiteral("/../../lib/neriplayer/neriplayer-core.jar"),
+            appDir + QStringLiteral("/../lib/neriplayer/neriplayer-core.jar"),
+            appDir + QStringLiteral("/../../desktop/build/libs/neriplayer-core.jar"),
+        };
+        jar.clear();
+        for (const QString &candidate : candidates) {
+            if (QFileInfo::exists(candidate)) {
+                jar = candidate;
+                break;
+            }
+        }
+    }
+    if (jar.isEmpty() || !QFileInfo::exists(jar))
         return false;
 
+    // java：环境变量 > 自带的 jlink 运行时 > 系统 java
     QString java = QString::fromLocal8Bit(qgetenv("NERIPLAYER_JAVA"));
+    if (java.isEmpty()) {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        for (const QString &candidate : {
+                 appDir + QStringLiteral("/runtime/bin/java"),
+                 appDir + QStringLiteral("/../lib/neriplayer/runtime/bin/java"),
+                 appDir + QStringLiteral("/../../lib/neriplayer/runtime/bin/java"),
+             }) {
+            if (QFileInfo::exists(candidate)) {
+                java = candidate;
+                break;
+            }
+        }
+    }
     if (java.isEmpty())
         java = QStandardPaths::findExecutable(QStringLiteral("java"));
     if (java.isEmpty())
@@ -236,7 +267,7 @@ bool BackendClient::tryStartBackend()
     args << QStringLiteral("-Dfile.encoding=UTF-8")
          << QStringLiteral("-Xmx512m")
          << QStringLiteral("-XX:+UseG1GC")
-         << QStringLiteral("-jar") << QString::fromLocal8Bit(jar);
+         << QStringLiteral("-jar") << jar;
 
     qint64 pid = -1;
     const bool started = QProcess::startDetached(java, args, QDir::homePath(), &pid);

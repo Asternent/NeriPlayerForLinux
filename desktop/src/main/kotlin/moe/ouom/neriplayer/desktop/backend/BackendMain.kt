@@ -37,7 +37,8 @@ fun main(args: Array<String>) {
     }
 
     val container = AppContainer()
-    val server = CoreServer(socketPath)
+    lateinit var server: CoreServer
+    server = CoreServer(socketPath) { AppApi.pushInitialState(server, container) }
     AppApi.register(server, container)
     PlayerApi.register(server, container)
     LibraryApi.register(server, container)
@@ -51,12 +52,23 @@ fun main(args: Array<String>) {
 
     // 先装好命令与事件，再启动核心（bootstrap 期间产生的状态会由 StatePublisher 推出去）
     container.bootstrap(scanLibrary = !noScan)
+    val runtime = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default
+    )
+    val tray = TrayService(container, server)
+    tray.start(runtime)
+    AppApi.trayAvailable = tray.running
+    val shortcuts = GlobalShortcutService(container, server)
+    shortcuts.start(runtime)
+    AppApi.openGlobalShortcutSettings = { shortcuts.openConfigure() }
     server.start()
     publisher.start()
 
     Runtime.getRuntime().addShutdownHook(Thread {
         log("shutting down")
         runCatching { container.player.persistQueueState() }
+        runCatching { tray.stop() }
+        runCatching { shortcuts.stop() }
         server.close()
     })
 

@@ -26,6 +26,33 @@ Item {
             anchors.fill: parent
             asynchronous: false
             source: shell.sourceForRoute(Nav.current)
+
+            // 页面切换：淡入 + 轻微上浮
+            opacity: 0
+            transform: Translate { id: pageShift; y: 10 }
+
+            onSourceChanged: pageEnter.restart()
+            onLoaded: pageEnter.restart()
+
+            SequentialAnimation {
+                id: pageEnter
+                ParallelAnimation {
+                    NumberAnimation {
+                        target: pageLoader
+                        property: "opacity"
+                        to: 1
+                        duration: Theme.motionMedium
+                        easing.type: Easing.OutCubic
+                    }
+                    NumberAnimation {
+                        target: pageShift
+                        property: "y"
+                        to: 0
+                        duration: Theme.motionMedium
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
         }
     }
 

@@ -35,10 +35,21 @@ tools/dev.sh build                        # 只有改了 C++ 才需要
 tools/dev.sh stop
 ```
 
+**演示数据**（10 首带标签/封面的 demo 音乐，已扫描进媒体库）在 `/tmp/neri-demo`。
+复制一份到自己的测试根再用（不要共用同一个后端）：
+
+```bash
+export NERI_TEST_ROOT=/tmp/neri-dev-<你的名字>
+rm -rf "$NERI_TEST_ROOT"
+rsync -a --exclude runtime /tmp/neri-demo/ "$NERI_TEST_ROOT/"
+tools/dev.sh backend     # 在自己的副本上启动后端（会快速重扫一遍）
+tools/dev.sh screenshot /tmp/xx.png --page library --wait 2500
+```
+
 - 只改 QML：不用编译，直接 `screenshot` 即可（QML 从源码目录加载）。
 - 改 C++（`src/*.cpp|h`）：先 `tools/dev.sh build`。
-- 改后端 Kotlin：`tools/dev.sh backend` 前需要重新构建 jar：`cd desktop && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew -q backendJar --offline`，然后 `tools/dev.sh stop && tools/dev.sh backend`。
-  （`dev.sh backend` 只在 jar 不存在时自动构建；改完代码要手动 stop+重建+start）
+- 改后端 Kotlin：`tools/dev.sh stop` 后直接 `tools/dev.sh backend`（它会串行构建 jar 并启动私有副本）。
+  多个 agent 并行时 gradle 构建已用 flock 串行化；运行中的后端使用 `$NERI_TEST_ROOT/neriplayer-core.jar` 副本，不受他人重建影响。
 - 截图是 offscreen（`QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software`），不会弹窗打扰用户。
 - `--page` 可取值：`home/explore/library/settings/nowplaying/recent/stats/downloads/localPlaylist/localArtist/onlineCollection/remoteArtist`。
 - 也可以用 `read_image` 工具直接查看截图确认视觉效果。

@@ -9,16 +9,12 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import java.io.BufferedReader
-import java.io.BufferedWriter
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import java.io.ByteArrayOutputStream
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
-import java.nio.channels.Channels
+import java.nio.ByteBuffer
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
 import java.nio.charset.StandardCharsets
@@ -28,7 +24,6 @@ import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 无头后端的 IPC 服务器。
@@ -38,11 +33,12 @@ import java.util.concurrent.atomic.AtomicLong
  *   响应 {"id":1,"result":{...}} / {"id":1,"error":{"code":"...","message":"..."}}
  *   事件 {"event":"player","data":{...}}
  *
- * 命令处理函数在 [CoroutineScope] 上执行，互不阻塞；写回客户端时加锁保证整行完整。
+ * 命令处理函数在 [scope] 上并发执行；每个连接的读线程只负责拆包，写用同一把锁保证整行完整。
+ * 直接操作 SocketChannel + ByteBuffer（不用 java.io 流适配器，避免半关闭状态下的异常行为）。
  */
 class CoreServer(
     private val socketPath: Path,
-    private val onFirstClient: (ClientSession) -> Unit = {},
+    private val onClientConnected: (ClientSession) -> Unit = {},
 ) {
 
     /** 供 API 注册命令用。 */
@@ -87,7 +83,8 @@ class CoreServer(
             put("data", data)
         }.toString()
         for (client in clients) {
-            runCatching { client.send(line) }.onFailure { clients.remove(client) }
+            if (!client.send(line))
+                clients.remove(client)
         }
     }
 
@@ -99,8 +96,8 @@ class CoreServer(
             val session = ClientSession(socket)
             clients.add(session)
             log("client connected (${clients.size} total)")
-            onFirstClient(session)
             session.startReader()
+            runCatching { onClientConnected(session) }
         }
     }
 
@@ -117,7 +114,8 @@ class CoreServer(
                 val handler = handlers[method]
                     ?: throw ProtocolException("unknown_method", "未知方法: $method")
                 val result = handler(params)
-                session.send(resultLine(id, result))
+                if (!session.send(resultLine(id, result)))
+                    log("failed to reply $method (client gone)")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: ProtocolException) {
@@ -142,44 +140,77 @@ class CoreServer(
         }
     }.toString()
 
-    /** 单个前端连接。 */
+    /** 单个前端连接：一个读线程 + 加锁写。 */
     inner class ClientSession(private val channel: SocketChannel) {
         private val writeLock = Any()
-        private val writer = BufferedWriter(
-            OutputStreamWriter(Channels.newOutputStream(channel), StandardCharsets.UTF_8)
-        )
 
         fun startReader() {
-            Thread({
-                try {
-                    val reader = BufferedReader(InputStreamReader(Channels.newInputStream(channel), StandardCharsets.UTF_8))
-                    while (running) {
-                        val line = reader.readLine() ?: break
-                        if (line.isBlank()) continue
-                        val request = runCatching { WireJson.parseToJsonElement(line).jsonObject }.getOrElse {
-                            log("bad frame: ${line.take(160)}")
-                            continue
-                        }
-                        dispatch(this, request)
-                    }
-                } catch (_: Throwable) {
-                    // 客户端断开是正常现象
-                } finally {
-                    clients.remove(this)
-                    runCatching { channel.close() }
-                    log("client disconnected (${clients.size} left)")
-                }
-            }, "neriplayer-core-client").apply {
+            Thread({ readLoop() }, "neriplayer-core-client").apply {
                 isDaemon = true
                 start()
             }
         }
 
-        fun send(line: String) {
+        private fun readLoop() {
+            val buffer = ByteBuffer.allocate(64 * 1024)
+            val pending = ByteArrayOutputStream()
+            try {
+                while (running && channel.isOpen) {
+                    buffer.clear()
+                    val read = channel.read(buffer)
+                    if (read < 0)
+                        break
+                    if (read == 0)
+                        continue
+                    buffer.flip()
+                    val bytes = ByteArray(buffer.remaining())
+                    buffer.get(bytes)
+                    pending.write(bytes)
+                    // 逐行拆包
+                    while (true) {
+                        val data = pending.toByteArray()
+                        val newline = data.indexOf('\n'.code.toByte())
+                        if (newline < 0)
+                            break
+                        val line = String(data, 0, newline, StandardCharsets.UTF_8).trim()
+                        val rest = data.copyOfRange(newline + 1, data.size)
+                        pending.reset()
+                        pending.write(rest)
+                        if (line.isEmpty())
+                            continue
+                        val request = runCatching { WireJson.parseToJsonElement(line).jsonObject }
+                            .getOrElse {
+                                log("bad frame: ${line.take(160)}")
+                                continue
+                            }
+                        dispatch(this, request)
+                    }
+                }
+            } catch (error: Throwable) {
+                if (running && channel.isOpen)
+                    log("client reader stopped: ${error::class.simpleName}: ${error.message}")
+            } finally {
+                runCatching { channel.close() }
+                clients.remove(this)
+                log("client disconnected (${clients.size} left)")
+            }
+        }
+
+        /** 写一行；连接已断开时返回 false。 */
+        fun send(line: String): Boolean {
+            val payload = (line + "\n").toByteArray(StandardCharsets.UTF_8)
             synchronized(writeLock) {
-                writer.write(line)
-                writer.newLine()
-                writer.flush()
+                if (!channel.isOpen)
+                    return false
+                val buffer = ByteBuffer.wrap(payload)
+                return try {
+                    while (buffer.hasRemaining())
+                        channel.write(buffer)
+                    true
+                } catch (_: Throwable) {
+                    close()
+                    false
+                }
             }
         }
 
@@ -192,7 +223,6 @@ class CoreServer(
     private val clients = CopyOnWriteArrayList<ClientSession>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val stopLatch = CountDownLatch(1)
-    private val idCounter = AtomicLong(0L)
 
     @Volatile
     private var running = true

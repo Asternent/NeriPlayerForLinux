@@ -16,6 +16,8 @@ set(NERIPLAYER_SOURCES
     src/backendclient.cpp
     src/systemtheme.h
     src/systemtheme.cpp
+    src/singleinstance.h
+    src/singleinstance.cpp
 )
 
 qt_add_executable(neriplayer ${NERIPLAYER_SOURCES})
@@ -36,7 +38,6 @@ target_compile_definitions(neriplayer PRIVATE
 )
 
 # 开发时 QML 直接从源码目录加载（改 QML 不用重新编译），打包时安装到 share/neriplayer/qml
-install(TARGETS neriplayer RUNTIME DESTINATION bin)
+install(TARGETS neriplayer RUNTIME DESTINATION lib/neriplayer)
 install(DIRECTORY qml DESTINATION share/neriplayer)
 
-qt_finalize_executable(neriplayer)

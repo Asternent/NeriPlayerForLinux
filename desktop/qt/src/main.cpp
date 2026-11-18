@@ -1,4 +1,5 @@
 #include "backendclient.h"
+#include "singleinstance.h"
 #include "systemtheme.h"
 
 #include <QCommandLineOption>
@@ -80,16 +81,30 @@ int main(int argc, char *argv[])
     QCommandLineOption sizeOption(QStringLiteral("size"),
                                   QStringLiteral("窗口尺寸，例如 1180x820"),
                                   QStringLiteral("WxH"));
+    QCommandLineOption panelOption(QStringLiteral("panel"),
+                                   QStringLiteral("启动后直接打开某个浮层面板：queue/volume/effects/sleep/downloads/login"),
+                                   QStringLiteral("name"));
+    QCommandLineOption screenshotAllOption(QStringLiteral("screenshot-all"),
+                                           QStringLiteral("抓取所有顶层窗口后退出（前缀路径，生成 <prefix>-1.png 等）"),
+                                           QStringLiteral("prefix"));
     QCommandLineOption waitOption(QStringLiteral("wait"),
                                   QStringLiteral("截图前的等待毫秒数"),
                                   QStringLiteral("ms"),
                                   QStringLiteral("1200"));
     parser.addOption(qmlDirOption);
     parser.addOption(screenshotOption);
+    parser.addOption(screenshotAllOption);
     parser.addOption(pageOption);
+    parser.addOption(panelOption);
     parser.addOption(sizeOption);
     parser.addOption(waitOption);
     parser.process(app);
+
+    SingleInstance instance;
+    if (!instance.acquire()) {
+        // 已有实例在跑：它已被通知激活窗口，本进程直接退出
+        return 0;
+    }
 
     const QString qmlDir = resolveQmlDir(parser.value(qmlDirOption));
     qInfo() << "[qml] loading from" << qmlDir;
@@ -133,6 +148,9 @@ int main(int argc, char *argv[])
         if (parser.isSet(pageOption))
             QMetaObject::invokeMethod(rootObject, "openPageByName",
                                       Q_ARG(QVariant, parser.value(pageOption)));
+        if (parser.isSet(panelOption))
+            QMetaObject::invokeMethod(rootObject, "openPanelByName",
+                                      Q_ARG(QVariant, parser.value(panelOption)));
         if (parser.isSet(sizeOption)) {
             const QStringList parts = parser.value(sizeOption).split(QLatin1Char('x'));
             if (parts.size() == 2)
@@ -142,7 +160,31 @@ int main(int argc, char *argv[])
 
     backend.connectToBackend();
 
-    if (parser.isSet(screenshotOption)) {
+    QObject::connect(&instance, &SingleInstance::activationRequested, &app, [&rootObject]() {
+        if (rootObject)
+            QMetaObject::invokeMethod(rootObject, "showMainWindow");
+    });
+
+    if (parser.isSet(screenshotAllOption)) {
+        const QString prefix = parser.value(screenshotAllOption);
+        const int waitMs = parser.value(waitOption).toInt();
+        QTimer::singleShot(waitMs, &app, [prefix]() {
+            int index = 1;
+            for (QWindow *window : QGuiApplication::topLevelWindows()) {
+                auto *quick = qobject_cast<QQuickWindow *>(window);
+                if (!quick || !quick->isVisible())
+                    continue;
+                const QImage image = quick->grabWindow();
+                if (image.isNull())
+                    continue;
+                const QString path = prefix + QStringLiteral("-") + QString::number(index) + QStringLiteral(".png");
+                if (image.save(path))
+                    qInfo() << "[screenshot] saved" << path << image.size() << window->title();
+                ++index;
+            }
+            QCoreApplication::exit(index > 1 ? 0 : 1);
+        });
+    } else if (parser.isSet(screenshotOption)) {
         const QString target = parser.value(screenshotOption);
         const int waitMs = parser.value(waitOption).toInt();
         QTimer::singleShot(waitMs, &app, [window, target]() {

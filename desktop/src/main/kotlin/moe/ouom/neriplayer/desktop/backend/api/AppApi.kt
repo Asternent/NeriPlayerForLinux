@@ -7,6 +7,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import moe.ouom.neriplayer.desktop.backend.CoreServer
+import moe.ouom.neriplayer.desktop.backend.ShortcutCatalog
 import moe.ouom.neriplayer.desktop.backend.PlayerWire
 import moe.ouom.neriplayer.desktop.backend.ThemePalette
 import moe.ouom.neriplayer.desktop.backend.WireJson
@@ -39,8 +40,25 @@ object AppApi {
 
     const val PROTOCOL_VERSION = 1
 
+    /** 托盘是否可用（由 BackendMain 启动托盘后写入）。 */
+    @Volatile
+    var trayAvailable: Boolean = false
+
+    /** 打开桌面系统的全局快捷键配置界面（由 BackendMain 注入）。 */
+    @Volatile
+    var openGlobalShortcutSettings: (() -> Unit)? = null
+
     fun register(server: CoreServer, container: AppContainer) {
         server.on("app.ping") { buildJsonObject { put("pong", true) } }
+
+        server.on("app.shutdown") {
+            // 前端退出时请求后端收尾（Qt 侧也会 kill 进程，这里只是留出优雅退出路径）
+            Thread {
+                Thread.sleep(150)
+                Runtime.getRuntime().halt(0)
+            }.apply { isDaemon = true }.start()
+            buildJsonObject { put("ok", true) }
+        }
 
         server.on("app.bootstrap") {
             bootstrapPayload(container)
@@ -63,6 +81,11 @@ object AppApi {
 
         server.on("app.theme") {
             themePayload(container)
+        }
+
+        server.on("shortcut.openGlobalSettings") {
+            openGlobalShortcutSettings?.invoke()
+            buildJsonObject { put("ok", openGlobalShortcutSettings != null) }
         }
 
         server.on("settings.get") {
@@ -138,6 +161,12 @@ object AppApi {
                 put("scanFound", scan.found)
                 put("folders", encodeAny(container.settings.current.musicFolders))
                 put("indexLoaded", library.indexLoaded.value)
+            })
+            put("tray", buildJsonObject {
+                put("available", trayAvailable)
+            })
+            put("shortcuts", buildJsonObject {
+                put("actions", encodeAny(ShortcutCatalog.payload()))
             })
             put("playlists", buildJsonObject {
                 put("count", container.playlists.playlists.value.size)

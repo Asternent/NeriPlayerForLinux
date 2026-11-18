@@ -41,7 +41,19 @@ PY
 }
 
 build_backend() {
-    ( cd "$DESKTOP_DIR" && JAVA_HOME="$JAVA_HOME" ./gradlew -q backendJar --offline )
+    # 多个 agent 并行时串行化 gradle 构建，避免互相重写同一个 jar
+    mkdir -p "$TEST_ROOT"
+    (
+        flock -x 200
+        cd "$DESKTOP_DIR" && JAVA_HOME="$JAVA_HOME" ./gradlew -q backendJar --offline
+    ) 200>"$TEST_ROOT/.build.lock"
+}
+
+# 启动用的 jar 是构建产物的私有副本：即使别人重新构建，运行中的 JVM 也不会类加载错乱
+private_jar() {
+    local target="$TEST_ROOT/neriplayer-core.jar"
+    cp -f "$BACKEND_JAR" "$target"
+    echo "$target"
 }
 
 cmd_backend() {
@@ -54,7 +66,7 @@ cmd_backend() {
         echo "building backend jar ..."
         build_backend
     fi
-    nohup "$JAVA_BIN" -Dfile.encoding=UTF-8 -Xmx512m -XX:+UseG1GC \
+    setsid nohup "$JAVA_BIN" -Dfile.encoding=UTF-8 -Xmx512m -XX:+UseG1GC \
         -jar "$BACKEND_JAR" "${@:-}" >"$TEST_ROOT/backend.log" 2>&1 &
     echo $! >"$TEST_ROOT/backend.pid"
     for _ in $(seq 1 100); do
@@ -70,11 +82,11 @@ cmd_backend() {
 }
 
 cmd_stop() {
+    # 只停自己的后端（pid 文件），不要影响并行开发的其他 agent
     if [ -f "$TEST_ROOT/backend.pid" ]; then
         kill "$(cat "$TEST_ROOT/backend.pid")" 2>/dev/null || true
         rm -f "$TEST_ROOT/backend.pid"
     fi
-    pkill -f "neriplayer-core.jar" 2>/dev/null || true
     rm -f "$SOCKET"
     echo "backend stopped"
 }
