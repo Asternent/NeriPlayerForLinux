@@ -43,6 +43,7 @@ fun main() {
     if (!moe.ouom.neriplayer.desktop.core.SingleInstance.acquire()) {
         kotlin.system.exitProcess(0)
     }
+    ensureDesktopFile()
     setupDesktopLookAndFeel()
     val container = AppContainer()
     container.bootstrap()
@@ -77,30 +78,28 @@ fun main() {
             windowVisible = true
         }
 
-        // 全局快捷键：设置变化（绑定或开关）时重新向 portal 注册。
-        // 仅注册声明支持全局的动作；导航类动作留在程序内，避免抢走桌面按键。
+        // 全局快捷键：启动时按内置默认值静默注册（桌面弹授权，未配过的键直接生效，
+        // 已配过的键保留用户设置）。改键走系统设置，不随应用内绑定变化重注册。
         val globalShortcuts = remember { moe.ouom.neriplayer.desktop.core.GlobalShortcutsPortal { actionId ->
+            println("[shortcut] 触发：$actionId")
             val action = ShortcutAction.fromId(actionId)
             if (action != null) {
                 moe.ouom.neriplayer.desktop.ui.ShortcutDispatcher.dispatch(action, container)
             }
         } }
-        LaunchedEffect(settings.shortcuts) {
-            globalShortcuts.stop()
-            if (settings.shortcuts.globalEnabled) {
-                val bindings = ShortcutAction.entries
-                    .filter { it.globalSupported }
-                    .map { it to settings.shortcuts.bindingFor(it) }
-                    .filter { it.second.isBound }
-                if (bindings.isNotEmpty()) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        globalShortcuts.register(bindings)
-                    }
-                }
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                globalShortcuts.registerDefaults()
             }
         }
         DisposableEffect(Unit) {
-            onDispose { globalShortcuts.stop() }
+            moe.ouom.neriplayer.desktop.ui.AppIntents.openGlobalShortcutSettings = {
+                globalShortcuts.openConfigure()
+            }
+            onDispose {
+                globalShortcuts.stop()
+                moe.ouom.neriplayer.desktop.ui.AppIntents.openGlobalShortcutSettings = null
+            }
         }
 
         // 托盘：优先注册状态栏指示器（SNI + DBusMenu，菜单由桌面渲染，GNOME 下点击可靠）；
@@ -176,7 +175,9 @@ fun main() {
                 val prefix = if (playbackState == PlaybackState.PLAYING) "▶ " else "⏸ "
                 "$prefix${song.displayName()} - ${song.artistText()} · NeriPlayer"
             } ?: "音理音理!! · NeriPlayer",
-            onKeyEvent = { event -> handleShortcut(event, container) },
+            // 用预览层而非 post 层：快捷键要在焦点分发之前被处理，
+            // 否则焦点在按钮/输入框上时（如空格播放暂停）事件先被控件消费，窗口层收不到
+            onPreviewKeyEvent = { event -> handleShortcut(event, container) },
         ) {
             LaunchedEffect(Unit) {
                 while (true) {
@@ -290,14 +291,48 @@ private fun isWaylandSession(): Boolean =
         !System.getenv("WAYLAND_DISPLAY").isNullOrBlank()
 
 /**
- * 程序内快捷键：按用户配置（设置页 → 快捷键）匹配，未配置时用默认绑定。
- * 默认绑定与旧版硬编码行为一致：Space 播放暂停、Ctrl+←/→ 切歌、←/→ 快进、↑/↓ 音量、Ctrl+L 悬浮歌词。
+ * 确保 ~/.local/share/applications/neriplayer.desktop 存在。
+ *
+ * xdg-desktop-portal（≥1.16）要求解析出应用 id 才允许 GlobalShortcuts 等调用，
+ * 解析依据是已安装 .desktop 文件的 basename。deb 自带的 desktop 文件在
+ * /opt/neriplayer/lib/ 下不在标准目录，因此这里在启动时补写一份到用户目录。
+ */
+private fun ensureDesktopFile() {
+    try {
+        val dir = java.io.File(System.getProperty("user.home"), ".local/share/applications")
+        dir.mkdirs()
+        val target = java.io.File(dir, "neriplayer.desktop")
+        if (target.exists()) return
+        val icon = java.io.File("/opt/neriplayer/lib/NeriPlayer.png")
+            .takeIf { it.isFile }?.absolutePath ?: "neriplayer"
+        target.writeText(
+            """
+            [Desktop Entry]
+            Name=NeriPlayer
+            Comment=NeriPlayer 音理音理 — Linux 原生 Compose Desktop 音乐播放器
+            Exec=/opt/neriplayer/bin/NeriPlayer
+            Icon=$icon
+            Terminal=false
+            Type=Application
+            Categories=Audio
+            StartupWMClass=moe-ouom-neriplayer-desktop-MainKt
+            """.trimIndent() + "\n",
+        )
+        println("[shortcut] 已写入用户 .desktop 文件：$target")
+    } catch (e: Exception) {
+        println("[shortcut] 写入 .desktop 失败（不影响正常运行）：${e.message}")
+    }
+}
+
+/**
+ * 程序内快捷键：按用户配置（设置页 → 快捷键 → 应用内）匹配，未配置时用默认绑定。
+ * 默认绑定与旧版硬编码行为一致：Space 播放暂停、媒体键切歌、Ctrl+L 悬浮歌词、Esc 返回。
  */
 private fun handleShortcut(event: KeyEvent, container: AppContainer): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val shortcuts = container.settings.current.shortcuts
     for (action in ShortcutAction.entries) {
-        if (shortcuts.bindingFor(action).matches(event)) {
+        if (shortcuts.localBindingFor(action).matches(event)) {
             return moe.ouom.neriplayer.desktop.ui.ShortcutDispatcher.dispatch(action, container)
         }
     }

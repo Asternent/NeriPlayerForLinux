@@ -22,8 +22,16 @@ object ShortcutDispatcher {
     @Volatile
     var onOpenDownloads: (() -> Unit)? = null
 
+    /**
+     * 设置页录制新键期间为 true：窗口级快捷键分发让行，
+     * 否则预览层会先匹配到同名动作并消费事件，录制框收不到按键。
+     */
+    @Volatile
+    var capturePaused: Boolean = false
+
     /** 执行一个动作；返回 true 表示已被处理。 */
     fun dispatch(action: ShortcutAction, container: AppContainer): Boolean {
+        if (capturePaused) return false
         val player = container.player
         return when (action) {
             ShortcutAction.PLAY_PAUSE -> { player.togglePlayPause(); true }
@@ -75,5 +83,6 @@ object ShortcutDispatcher {
         onNavigate = null
         onToggleTrayPanel = null
         onOpenDownloads = null
+        capturePaused = false
     }
 }

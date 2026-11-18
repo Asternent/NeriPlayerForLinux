@@ -11,5 +11,7 @@ object AppIntents {
     var openSettings: (() -> Unit)? = null
     var openDownloads: (() -> Unit)? = null
     var toggleTrayPanel: (() -> Unit)? = null
+    /** 打开桌面系统的全局快捷键配置页；返回是否成功打开。由 Main 注册。 */
+    var openGlobalShortcutSettings: (() -> Boolean)? = null
     var quit: (() -> Unit)? = null
 }

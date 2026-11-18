@@ -151,7 +151,7 @@ fun NowPlayingScreen(
     val lyricIndex = remember(lyrics, position) { currentLyricIndex(lyrics.lines, position) }
 
     val backBinding = container.settings.state.collectAsState().value.shortcuts
-        .let { it.bindingFor(moe.ouom.neriplayer.desktop.core.ShortcutAction.NAV_BACK) }
+        .let { it.localBindingFor(moe.ouom.neriplayer.desktop.core.ShortcutAction.NAV_BACK) }
     val backKeyFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) {
         runCatching { backKeyFocusRequester.requestFocus() }
