@@ -23,6 +23,10 @@ Window {
     y: screen ? Math.round(screen.virtualY + screen.height - height - 16) : 0
 
     function showPanel() {
+        if (visible) {
+            hidePanel()
+            return
+        }
         // 每次弹出都重新贴到屏幕右下角（Wayland 无法拿到托盘图标位置）
         if (screen) {
             x = Math.round(screen.virtualX + screen.width - width - 16)
@@ -49,6 +53,35 @@ Window {
 
     onActiveChanged: if (!active && visible) hidePanel()
 
+    // 应用整体失活（切到其它应用）时收起面板
+    readonly property bool appActive: Qt.application.state === Qt.ApplicationActive
+    onAppActiveChanged: if (!appActive && visible) hidePanel()
+
+    // 点击主窗口（同一应用内）时也收起面板
+    property Connections mainWindowConnection: Connections {
+        target: panel.mainWindow
+        function onActiveChanged() {
+            if (panel.mainWindow && panel.mainWindow.active && panel.visible && !panel.active)
+                panel.hidePanel()
+        }
+    }
+
+    Shortcut {
+        sequences: [StandardKey.Cancel, "Esc"]
+        enabled: panel.visible
+        onActivated: panel.hidePanel()
+    }
+
+    // Wayland 下 QWindow.active / 失焦事件不总是可靠：面板打开后若长时间无操作则自动收起
+    property bool hovered: false
+    property Timer autoHideTimer: Timer {
+        interval: 15000
+        repeat: false
+        running: panel.visible && !panel.hovered
+        onTriggered: panel.hidePanel()
+    }
+    onVisibleChanged: if (visible) autoHideTimer.restart()
+
     // 卡片主体
     Rectangle {
         anchors.fill: parent
@@ -56,6 +89,10 @@ Window {
         color: Theme.surfaceContainerLow
         border.width: 1
         border.color: Theme.withAlpha(Theme.outlineVariant, 0.7)
+
+        HoverHandler {
+            onHoveredChanged: panel.hovered = hovered
+        }
 
         Column {
             anchors.fill: parent

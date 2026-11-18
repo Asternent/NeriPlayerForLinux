@@ -1,6 +1,7 @@
 import QtQuick
 import "../"
 import "../library" as Library
+import "../library"
 
 // 首页栏目容器：标题 + 内容。由 HomePage 按后端 sections 顺序实例化。
 // kind:

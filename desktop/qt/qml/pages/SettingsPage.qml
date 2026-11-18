@@ -109,6 +109,9 @@ Item {
     property var _onAccountsChanged: null
     property var _onSyncState: null
 
+    // 仅供截图验证：>0 时把设置页滚动到该位置；-1 表示不启用（--screenshot 模式下自动定位到快捷键卡片）。
+    property int __debugScrollTo: -1
+
     // ---------------------------------------------------------------- 工具函数
 
     function sv(key, fallback) {
@@ -122,6 +125,22 @@ Item {
     function sb(key, fallback) {
         const value = page.sv(key, fallback)
         return value === true
+    }
+
+    function cliArgument(name) {
+        const args = Qt.application.arguments
+        const index = args.indexOf(name)
+        return (index >= 0 && index + 1 < args.length) ? args[index + 1] : ""
+    }
+
+    // 截图验证辅助：滚动到快捷键卡片（__debugScrollTo >= 0 时滚动到指定位置）。
+    function scrollToDebugTarget() {
+        if (!flick || !shortcutSection)
+            return
+        const maxY = Math.max(0, flick.contentHeight - flick.height)
+        const target = page.__debugScrollTo >= 0 ? page.__debugScrollTo
+                                                 : Math.max(0, shortcutSection.y - 8)
+        flick.contentY = Math.max(0, Math.min(target, maxY))
     }
 
     function setSetting(key, value) {
@@ -517,6 +536,10 @@ Item {
             if (data.message)
                 page.syncStatusMessage = ""
         }
+        // 截图验证辅助：离屏截图时内容较长，自动滚动到快捷键卡片；正常启动不受影响。
+        if (page.cliArgument("--page") === "settings"
+                && Qt.application.arguments.indexOf("--screenshot") >= 0)
+            shortcutDebugScroll.start()
         Api.on("library.scan", page._onScan)
         Api.on("library.changed", page._onLibraryChanged)
         Api.on("accounts.changed", page._onAccountsChanged)
@@ -1502,22 +1525,16 @@ Item {
 
             // ============================================================ 快捷键
             SettingsSection {
+                id: shortcutSection
                 width: parent.width - 24
                 x: 12
                 title: "快捷键"
                 description: "应用内与全局快捷键"
                 icon: "keyboard"
 
+                // 动作表、录制与保存都在 ShortcutEditor 内部完成（读取 Settings.values.shortcuts）。
                 ShortcutEditor {
                     width: parent.width
-                    localBindings: {
-                        const shortcuts = page.sv("shortcuts", null)
-                        return shortcuts && shortcuts.local ? shortcuts.local : ({})
-                    }
-                    globalBindings: {
-                        const shortcuts = page.sv("shortcuts", null)
-                        return shortcuts && shortcuts.global ? shortcuts.global : ({})
-                    }
                 }
             }
 
@@ -1601,5 +1618,13 @@ Item {
                 height: 24
             }
         }
+    }
+
+    // 截图验证辅助：等动作表加载、布局稳定后再滚动。
+    Timer {
+        id: shortcutDebugScroll
+        interval: 1500
+        repeat: false
+        onTriggered: page.scrollToDebugTarget()
     }
 }

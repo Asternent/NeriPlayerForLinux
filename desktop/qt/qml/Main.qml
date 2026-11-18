@@ -91,7 +91,7 @@ ApplicationWindow {
         function onConnectedChanged() {
             if (Backend.connected) {
                 root.bootstrap()
-                Api.call("app.setSystemTheme", SystemTheme.payload())
+                Api.call("app.setSystemTheme", SystemTheme.payload()).catch(function() {})
             }
         }
         function onEvent(name, data) {
@@ -112,6 +112,15 @@ ApplicationWindow {
         function onValuesChanged() {
             if (Backend.connected)
                 Api.call("app.refreshTheme").catch(function() {})
+        }
+    }
+
+    // 系统主题变化（切换深浅色 / 改 KDE 强调色）时重新上报，让后端重算 M3 色板
+    Connections {
+        target: SystemTheme
+        function onChanged() {
+            if (Backend.connected)
+                Api.call("app.setSystemTheme", SystemTheme.payload()).catch(function() {})
         }
     }
 

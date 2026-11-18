@@ -1,6 +1,7 @@
 import QtQuick
 import "../components"
 import "../components/home"
+import "../components/library"
 
 // 首页：LargeTopAppBar 风格大标题 + 栏目列表。
 // 数据来源：

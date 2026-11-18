@@ -6,7 +6,7 @@ import ".."
 // errorContainer 底色、圆角 16、内边距 14、图标 20 + 文案 bodyMedium + 可选「重试」。
 //
 // 属性：message（错误文案）、retryable（是否显示重试）
-// 信号：retryClicked()
+// 信号：retryClicked()；另有兼容旧版根目录 ErrorCard 的 retry()，点击重试时两者都会发出。
 Item {
     id: root
 
@@ -14,6 +14,7 @@ Item {
     property bool retryable: true
 
     signal retryClicked()
+    signal retry()
 
     implicitHeight: card.height
     implicitWidth: parent ? parent.width : 320
@@ -83,7 +84,10 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: root.retryClicked()
+                    onClicked: {
+                        root.retryClicked()
+                        root.retry()
+                    }
                 }
             }
         }

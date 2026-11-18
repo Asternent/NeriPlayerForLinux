@@ -1,5 +1,6 @@
 import QtQuick
 import "../"
+import "../library"
 
 // 搜索历史区块：标题 + 「清空」操作 + 可换行的历史关键词标签。
 Item {

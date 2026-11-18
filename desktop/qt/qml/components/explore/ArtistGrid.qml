@@ -1,7 +1,8 @@
 import QtQuick
 import "../"
+import "../library"
 
-// 可换行的歌手卡片流（复用 components/ArtistCard）。
+// 可换行的歌手卡片流（复用 components/library/ArtistCard）。
 Flow {
     id: grid
 

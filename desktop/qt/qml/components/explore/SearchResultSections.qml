@@ -1,6 +1,7 @@
 import QtQuick
 import "../"
 import "../library" as Lib
+import "../library"
 
 // 探索页搜索结果：歌曲（列表）/ 歌单·专辑（卡片网格）/ 歌手（卡片网格）三组。
 Item {

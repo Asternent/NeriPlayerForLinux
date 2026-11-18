@@ -1,6 +1,7 @@
 import QtQuick
 import "../components"
 import "../components/explore"
+import "../components/library"
 
 // 在线歌单 / 专辑 / 收藏夹详情页。
 // Nav.currentArg 是 OnlineCollection 对象（可额外带 kind: playlist|album|favorites）。

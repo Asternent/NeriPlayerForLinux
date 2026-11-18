@@ -1,101 +1,292 @@
 import QtQuick
 import "../"
 
-// 快捷键展示：应用内 / 全局两列，读取 Settings.values.shortcuts（未覆盖的动作显示默认键位）。
-// 目前只做展示，键位录制交互待后续接入（写入 shortcuts.local / shortcuts.global 即可）。
+// 快捷键设置：从后端 shortcuts.catalog 加载动作表，按分类分组展示。
+// 应用内键位可点击录制（写入 Settings.shortcuts.local，保留其它条目）；
+// 全局键位由桌面系统（xdg portal）管理，这里只读展示默认值并提供跳转入口。
 Item {
     id: root
 
-    property var localBindings: ({})
-    property var globalBindings: ({})
+    // 后端动作表与加载状态。
+    property var catalog: []
+    property bool loading: true
+    property string errorText: ""
 
-    width: parent ? parent.width : 0
-    implicitHeight: layout.height
-
-    // 与 core/Shortcuts.kt 的 ShortcutAction 保持一致。
-    readonly property var actions: [
-        { id: "play_pause", label: "播放 / 暂停", category: "播放控制", systemKey: true, globalSupported: true, defaultLocal: "Space" },
-        { id: "next_song", label: "下一首", category: "播放控制", systemKey: false, globalSupported: true, defaultLocal: "媒体下一首" },
-        { id: "previous_song", label: "上一首", category: "播放控制", systemKey: false, globalSupported: true, defaultLocal: "媒体上一首" },
-        { id: "volume_up", label: "音量 +", category: "播放控制", systemKey: false, globalSupported: true, defaultLocal: "Ctrl+↑" },
-        { id: "volume_down", label: "音量 −", category: "播放控制", systemKey: false, globalSupported: true, defaultLocal: "Ctrl+↓" },
-        { id: "seek_forward", label: "快进 5 秒", category: "播放控制", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+→" },
-        { id: "seek_backward", label: "后退 5 秒", category: "播放控制", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+←" },
-        { id: "toggle_floating_lyrics", label: "开关悬浮歌词", category: "功能与窗口", systemKey: false, globalSupported: true, defaultLocal: "Ctrl+L" },
-        { id: "toggle_floating_lyrics_lock", label: "固定 / 取消固定歌词", category: "功能与窗口", systemKey: false, globalSupported: true, defaultLocal: "Ctrl+Alt+L" },
-        { id: "open_now_playing", label: "打开播放页", category: "功能与窗口", systemKey: false, globalSupported: true, defaultLocal: "Ctrl+P" },
-        { id: "toggle_tray_panel", label: "打开 / 关闭控制面板", category: "功能与窗口", systemKey: false, globalSupported: true, defaultLocal: "Ctrl+M" },
-        { id: "toggle_downloads", label: "打开下载管理", category: "功能与窗口", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+D" },
-        { id: "nav_back", label: "返回上一页", category: "页面导航", systemKey: true, globalSupported: false, defaultLocal: "Esc" },
-        { id: "nav_home", label: "回到首页", category: "页面导航", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+H" },
-        { id: "nav_explore", label: "切换到探索", category: "页面导航", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+N" },
-        { id: "nav_library", label: "切换到媒体库", category: "页面导航", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+J" },
-        { id: "nav_settings", label: "切换到设置", category: "页面导航", systemKey: false, globalSupported: false, defaultLocal: "Ctrl+S" }
-    ]
+    // 正在录制的动作 id（同一时间只允许一个），空串表示没有在录制。
+    property string recordingActionId: ""
 
     readonly property real capsuleWidth: 132
-    readonly property real capsuleHeight: 30
+    readonly property real capsuleHeight: 36
+    readonly property real columnGap: 8
+    readonly property real rowHeight: 42
 
-    function keyName(code) {
-        const value = Number(code)
-        if (!value)
-            return "未设置"
-        if (value === 32) return "Space"
-        if (value === 27) return "Esc"
-        if (value === 10 || value === 13) return "Enter"
-        if (value === 9) return "Tab"
-        if (value === 8) return "Backspace"
-        if (value === 127 || value === 46) return "Delete"
-        if (value === 37) return "←"
-        if (value === 38) return "↑"
-        if (value === 39) return "→"
-        if (value === 40) return "↓"
-        if (value === 36) return "Home"
-        if (value === 35) return "End"
-        if (value === 33) return "PageUp"
-        if (value === 34) return "PageDown"
-        if (value === 45 || value === 155) return "Insert"
-        if (value >= 65 && value <= 90) return String.fromCharCode(value)
-        if (value >= 48 && value <= 57) return String.fromCharCode(value)
-        if (value >= 112 && value <= 123) return "F" + (value - 111)
-        return "键 #" + value
+    // 两列左侧起始 x，表头与每一行共用，保证列对齐。
+    readonly property real localColumnX: Math.max(0, width - capsuleWidth * 2 - columnGap)
+    readonly property real globalColumnX: Math.max(0, width - capsuleWidth)
+
+    width: parent ? parent.width : 0
+    implicitHeight: content.height
+
+    // 后端动作表按 category 分组（保持后端顺序）。
+    readonly property var groups: {
+        const order = []
+        const buckets = {}
+        for (let i = 0; i < root.catalog.length; ++i) {
+            const action = root.catalog[i]
+            const category = action.category || "其它"
+            if (!buckets[category]) {
+                buckets[category] = []
+                order.push(category)
+            }
+            buckets[category].push(action)
+        }
+        const result = []
+        for (let i = 0; i < order.length; ++i)
+            result.push({ category: order[i], actions: buckets[order[i]] })
+        return result
     }
 
+    Component.onCompleted: {
+        if (Backend.connected)
+            root.loadCatalog()
+    }
+
+    // 页面可能在后端连上之前就创建：连上后再加载动作表。
+    property Connections backendConnection: Connections {
+        target: Backend
+        function onConnectedChanged() {
+            if (Backend.connected && root.catalog.length === 0)
+                root.loadCatalog()
+        }
+    }
+
+    // ---------------------------------------------------------------- 数据加载
+
+    function loadCatalog() {
+        root.loading = true
+        root.errorText = ""
+        Api.get("shortcuts.catalog", {}, function(result, error) {
+            if (error) {
+                root.loading = false
+                root.errorText = "快捷键列表加载失败：" + (error.message || "未知错误")
+                return
+            }
+            root.catalog = (result && result.actions) ? result.actions : []
+            root.loading = false
+        })
+    }
+
+    function openGlobalSettings() {
+        Api.call("shortcut.openGlobalSettings").then(function(result) {
+            if (result && result.ok === false)
+                Toast.show("当前桌面环境不支持全局快捷键设置", "error")
+        }).catch(function(error) {
+            Toast.show("打开系统快捷键设置失败：" + (error && error.message ? error.message : error), "error")
+        })
+    }
+
+    // ---------------------------------------------------------------- 绑定读取
+
+    function storedLocal(actionId) {
+        const values = Settings.values
+        const shortcuts = values ? values.shortcuts : null
+        if (!shortcuts || !shortcuts.local)
+            return null
+        return shortcuts.local[actionId] ? shortcuts.local[actionId] : null
+    }
+
+    function localText(action) {
+        const stored = root.storedLocal(action.id)
+        if (stored)
+            return root.formatBinding(stored)
+        return action.localDefault ? action.localDefault : "未设置"
+    }
+
+    function globalText(action) {
+        if (!action.globalSupported)
+            return "不支持"
+        return action.globalDefault ? action.globalDefault : "未设置"
+    }
+
+    function actionHint(action) {
+        if (action.systemKey)
+            return "固定键 · 不可修改"
+        return action.globalSupported ? "应用内可录制 · 支持全局快捷键"
+                                      : "应用内可录制 · 不支持全局快捷键"
+    }
+
+    // ---------------------------------------------------------------- 键位格式化
+
+    // xkb 键名 → 界面展示名（与 core/Shortcuts.kt 的 displayKeyName 一致）。
+    function formatKeyName(key) {
+        if (!key)
+            return ""
+        switch (key) {
+        case "space": return "Space"
+        case "Return": return "Enter"
+        case "Escape": return "Esc"
+        case "Tab": return "Tab"
+        case "BackSpace": return "Backspace"
+        case "Delete": return "Delete"
+        case "Up": return "↑"
+        case "Down": return "↓"
+        case "Left": return "←"
+        case "Right": return "→"
+        case "XF86AudioPrev": return "媒体上一首"
+        case "XF86AudioNext": return "媒体下一首"
+        case "XF86AudioStop": return "媒体停止"
+        case "XF86AudioPlay": return "媒体播放"
+        case "XF86AudioPause": return "媒体暂停"
+        case "XF86AudioPlayPause": return "媒体播放/暂停"
+        default: return key.length === 1 ? key.toUpperCase() : key
+        }
+    }
+
+    // {key,ctrl,alt,shift,meta} → 「Ctrl+Shift+L」。
     function formatBinding(binding) {
-        if (!binding || !binding.keyCode)
+        if (!binding || !binding.key)
             return "未设置"
         const parts = []
         if (binding.ctrl) parts.push("Ctrl")
         if (binding.alt) parts.push("Alt")
         if (binding.shift) parts.push("Shift")
         if (binding.meta) parts.push("Meta")
-        parts.push(keyName(binding.keyCode))
+        parts.push(root.formatKeyName(binding.key))
         return parts.join("+")
     }
 
-    function localText(action) {
-        const stored = root.localBindings ? root.localBindings[action.id] : undefined
-        if (stored && stored.keyCode)
-            return formatBinding(stored)
-        return action.defaultLocal
+    // Qt 按键 → xkb 键名；不支持的键返回空串。
+    function qtKeyToXkb(key) {
+        if (key === Qt.Key_Space) return "space"
+        if (key >= Qt.Key_A && key <= Qt.Key_Z) return String.fromCharCode(key)
+        if (key >= Qt.Key_0 && key <= Qt.Key_9) return String.fromCharCode(key)
+        switch (key) {
+        case Qt.Key_Up: return "Up"
+        case Qt.Key_Down: return "Down"
+        case Qt.Key_Left: return "Left"
+        case Qt.Key_Right: return "Right"
+        case Qt.Key_Escape: return "Escape"
+        case Qt.Key_Return: return "Return"
+        case Qt.Key_Enter: return "Return"
+        case Qt.Key_Tab: return "Tab"
+        case Qt.Key_MediaNext: return "XF86AudioNext"
+        case Qt.Key_MediaPrevious: return "XF86AudioPrev"
+        case Qt.Key_MediaTogglePlayPause: return "XF86AudioPlayPause"
+        case Qt.Key_MediaPlay: return "XF86AudioPlay"
+        default: return ""
+        }
     }
 
-    function globalText(action) {
-        const stored = root.globalBindings ? root.globalBindings[action.id] : undefined
-        if (stored && stored.keyCode)
-            return formatBinding(stored)
-        return "未设置"
+    function isModifierKey(key) {
+        return key === Qt.Key_Shift || key === Qt.Key_Control || key === Qt.Key_Alt
+                || key === Qt.Key_Meta || key === Qt.Key_AltGr
+                || key === Qt.Key_Super_L || key === Qt.Key_Super_R
+                || key === Qt.Key_CapsLock || key === Qt.Key_NumLock
+                || key === Qt.Key_ScrollLock
     }
+
+    // ---------------------------------------------------------------- 录制 / 保存
+
+    function startRecording(action, scope) {
+        if (action.systemKey) {
+            Toast.show("「" + action.label + "」是固定键，不能修改", "info")
+            return
+        }
+        root.recordingActionId = action.id
+        if (scope)
+            scope.forceActiveFocus()
+    }
+
+    function stopRecording() {
+        root.recordingActionId = ""
+    }
+
+    function handleRecordKey(action, event) {
+        if (root.recordingActionId !== action.id)
+            return
+        // Esc 取消录制；修饰键本身不录制，继续等下一个非修饰键。
+        if (event.key === Qt.Key_Escape) {
+            event.accepted = true
+            root.stopRecording()
+            return
+        }
+        if (root.isModifierKey(event.key)) {
+            event.accepted = true
+            return
+        }
+        const xkbKey = root.qtKeyToXkb(event.key)
+        if (!xkbKey) {
+            event.accepted = true
+            Toast.show("暂不支持这个按键，请换一个", "info")
+            return
+        }
+        const binding = {
+            key: xkbKey,
+            ctrl: (event.modifiers & Qt.ControlModifier) !== 0,
+            alt: (event.modifiers & Qt.AltModifier) !== 0,
+            shift: (event.modifiers & Qt.ShiftModifier) !== 0,
+            meta: (event.modifiers & Qt.MetaModifier) !== 0
+        }
+        event.accepted = true
+        root.stopRecording()
+        root.saveLocal(action.id, binding)
+    }
+
+    // 保存单个应用内键位：必须带上完整的 local/global 两份 map，
+    // 因为 settings.set 是顶层浅合并，只传本次动作会丢掉其它覆盖项。
+    function saveLocal(actionId, binding) {
+        const values = Settings.values || ({})
+        const current = values.shortcuts || ({})
+        const local = {}
+        const global = {}
+        if (current.local) {
+            for (const id in current.local)
+                local[id] = current.local[id]
+        }
+        if (current.global) {
+            for (const id in current.global)
+                global[id] = current.global[id]
+        }
+        local[actionId] = binding
+        Settings.patch({ shortcuts: { local: local, global: global } })
+    }
+
+    function clearLocal(action) {
+        if (action.systemKey) {
+            Toast.show("「" + action.label + "」是固定键，不能修改", "info")
+            return
+        }
+        if (!root.storedLocal(action.id))
+            return
+        root.stopRecording()
+        root.saveLocal(action.id, { key: "", ctrl: false, alt: false, shift: false, meta: false })
+    }
+
+    // ---------------------------------------------------------------- 内容
 
     Column {
-        id: layout
-        width: parent.width
+        id: content
+        width: root.width
         spacing: 0
+
+        // 分区操作按钮（全局快捷键由桌面系统管理，跳转系统配置界面）。
+        Item {
+            width: content.width
+            height: 40
+
+            SettingsButton {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: "系统设置"
+                icon: "settings"
+                onClicked: root.openGlobalSettings()
+            }
+        }
 
         // 表头
         Item {
-            width: layout.width
-            height: 30
+            width: content.width
+            height: 28
 
             Text {
                 x: 0
@@ -108,10 +299,9 @@ Item {
             }
 
             Text {
-                anchors.right: parent.right
-                anchors.rightMargin: root.capsuleWidth + Theme.spacingSm
-                anchors.verticalCenter: parent.verticalCenter
+                x: root.localColumnX
                 width: root.capsuleWidth
+                anchors.verticalCenter: parent.verticalCenter
                 horizontalAlignment: Text.AlignHCenter
                 text: "应用内"
                 color: Theme.onSurfaceVariantColor
@@ -121,9 +311,9 @@ Item {
             }
 
             Text {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
+                x: root.globalColumnX
                 width: root.capsuleWidth
+                anchors.verticalCenter: parent.verticalCenter
                 horizontalAlignment: Text.AlignHCenter
                 text: "全局"
                 color: Theme.onSurfaceVariantColor
@@ -133,114 +323,291 @@ Item {
             }
         }
 
+        // 加载中
+        Item {
+            width: content.width
+            height: 36
+            visible: root.loading
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "正在加载快捷键…"
+                color: Theme.onSurfaceVariantColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
+        }
+
+        // 加载失败
+        Column {
+            width: content.width
+            visible: !root.loading && root.errorText !== ""
+            spacing: Theme.spacingSm
+
+            SettingsNote {
+                width: parent.width
+                text: root.errorText
+                textColor: Theme.error
+            }
+
+            SettingsButton {
+                text: "重试"
+                onClicked: root.loadCatalog()
+            }
+        }
+
+        // 动作分组
         Repeater {
-            model: root.actions
+            model: root.groups
 
-            delegate: Item {
-                id: shortcutRow
+            delegate: Column {
+                id: groupColumn
                 required property var modelData
-                width: layout.width
-                height: 42
+                readonly property var groupActions: modelData.actions
 
-                Column {
-                    x: 0
-                    width: Math.max(0, parent.width - root.capsuleWidth * 2 - Theme.spacingSm - Theme.spacingMd)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1
+                width: content.width
+                spacing: 0
 
-                    Text {
-                        width: parent.width
-                        text: shortcutRow.modelData.label
-                        color: Theme.onSurfaceColor
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 14
-                        elide: Text.ElideRight
-                    }
+                // 分类标题
+                Item {
+                    width: groupColumn.width
+                    height: 32
 
                     Text {
-                        width: parent.width
-                        text: shortcutRow.modelData.category
-                              + (shortcutRow.modelData.systemKey ? " · 固定按键" : "")
+                        x: 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: groupColumn.modelData.category
                         color: Theme.onSurfaceVariantColor
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 1
+                        color: Theme.withAlpha(Theme.outlineVariant, 0.6)
                     }
                 }
 
-                Rectangle {
-                    anchors.right: parent.right
-                    anchors.rightMargin: root.capsuleWidth + Theme.spacingSm
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: root.capsuleWidth
-                    height: root.capsuleHeight
-                    radius: 10
-                    color: shortcutRow.modelData.systemKey
-                           ? Theme.surfaceContainerHigh
-                           : Theme.surfaceContainer
-                    border.width: 1
-                    border.color: Theme.outlineVariant
-                    opacity: shortcutRow.modelData.systemKey ? 0.75 : 1
+                Repeater {
+                    model: groupColumn.groupActions
 
-                    Text {
-                        anchors.centerIn: parent
-                        width: parent.width - 12
-                        horizontalAlignment: Text.AlignHCenter
-                        text: root.localText(shortcutRow.modelData)
-                        elide: Text.ElideRight
-                        color: shortcutRow.modelData.systemKey
-                               ? Theme.onSurfaceVariantColor
-                               : Theme.onSurfaceColor
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 14
-                        font.weight: Font.Medium
-                    }
-                }
+                    delegate: Item {
+                        id: shortcutRow
+                        required property var modelData
+                        readonly property var action: modelData
+                        readonly property bool recording: root.recordingActionId === action.id
+                        readonly property bool isSystem: action.systemKey === true
 
-                Rectangle {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: root.capsuleWidth
-                    height: root.capsuleHeight
-                    radius: 10
-                    color: Theme.surfaceContainer
-                    border.width: 1
-                    border.color: Theme.outlineVariant
-                    opacity: shortcutRow.modelData.globalSupported ? 1 : 0.45
+                        width: groupColumn.width
+                        height: root.rowHeight
 
-                    Text {
-                        anchors.centerIn: parent
-                        width: parent.width - 12
-                        horizontalAlignment: Text.AlignHCenter
-                        text: shortcutRow.modelData.globalSupported
-                              ? root.globalText(shortcutRow.modelData)
-                              : "不支持"
-                        elide: Text.ElideRight
-                        color: root.globalText(shortcutRow.modelData) === "未设置"
-                               ? Theme.onSurfaceVariantColor
-                               : Theme.onSurfaceColor
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 14
-                        font.weight: Font.Medium
+                        // 行 hover 底色
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.leftMargin: -Theme.spacingSm
+                            anchors.rightMargin: -Theme.spacingSm
+                            radius: Theme.radiusSm
+                            color: Theme.withAlpha(Theme.onSurfaceColor, 0.04)
+                            visible: rowHover.hovered && !shortcutRow.recording
+                        }
+
+                        HoverHandler {
+                            id: rowHover
+                        }
+
+                        // 动作名 + 说明
+                        Column {
+                            x: 0
+                            width: Math.max(0, root.localColumnX - 56)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 1
+
+                            Text {
+                                width: parent.width
+                                text: shortcutRow.action.label
+                                color: Theme.onSurfaceColor
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 14
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: root.actionHint(shortcutRow.action)
+                                color: Theme.onSurfaceVariantColor
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        // 清除按钮（hover 且已覆盖默认键位时出现；右键胶囊也可清除）
+                        Item {
+                            id: clearButton
+                            width: 40
+                            height: 24
+                            x: root.localColumnX - width - Theme.spacingSm
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: rowHover.hovered && !shortcutRow.isSystem && !shortcutRow.recording
+                                     && root.storedLocal(shortcutRow.action.id) !== null
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: height / 2
+                                color: clearMouse.pressed
+                                       ? Theme.withAlpha(Theme.primary, 0.16)
+                                       : (clearHover.hovered ? Theme.withAlpha(Theme.primary, 0.08) : "transparent")
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "清除"
+                                color: Theme.primary
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                            }
+
+                            HoverHandler {
+                                id: clearHover
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            MouseArea {
+                                id: clearMouse
+                                anchors.fill: parent
+                                onClicked: root.clearLocal(shortcutRow.action)
+                            }
+                        }
+
+                        // ---------------- 应用内键位（可录制）
+                        Rectangle {
+                            id: localCapsule
+                            x: root.localColumnX
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: root.capsuleWidth
+                            height: root.capsuleHeight
+                            radius: 10
+                            color: shortcutRow.recording
+                                   ? Theme.primaryContainer
+                                   : (localHover.hovered && !shortcutRow.isSystem
+                                      ? Theme.surfaceContainerHighest
+                                      : Theme.surfaceContainerHigh)
+                            border.width: 1
+                            border.color: shortcutRow.recording ? Theme.primary : Theme.outlineVariant
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Theme.motionShort
+                                }
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                width: parent.width - 16
+                                horizontalAlignment: Text.AlignHCenter
+                                text: shortcutRow.recording ? "按下新键…" : root.localText(shortcutRow.action)
+                                elide: Text.ElideRight
+                                color: shortcutRow.recording
+                                       ? Theme.onPrimaryContainerColor
+                                       : (shortcutRow.isSystem ? Theme.onSurfaceVariantColor : Theme.onSurfaceColor)
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 14
+                                font.weight: Font.Medium
+                            }
+
+                            // 录制态焦点：捕获下一个非修饰键。
+                            FocusScope {
+                                id: recordScope
+                                anchors.fill: parent
+                                focus: shortcutRow.recording
+
+                                Keys.onPressed: function(event) {
+                                    root.handleRecordKey(shortcutRow.action, event)
+                                }
+
+                                onActiveFocusChanged: {
+                                    if (!activeFocus && shortcutRow.recording)
+                                        root.stopRecording()
+                                }
+                            }
+
+                            HoverHandler {
+                                id: localHover
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.RightButton) {
+                                        root.clearLocal(shortcutRow.action)
+                                        return
+                                    }
+                                    root.startRecording(shortcutRow.action, recordScope)
+                                }
+                            }
+                        }
+
+                        // ---------------- 全局键位（只读，由桌面系统管理）
+                        Rectangle {
+                            x: root.globalColumnX
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: root.capsuleWidth
+                            height: root.capsuleHeight
+                            radius: 10
+                            color: Theme.surfaceContainer
+                            border.width: 1
+                            border.color: Theme.outlineVariant
+                            opacity: shortcutRow.action.globalSupported ? 1 : 0.55
+
+                            Text {
+                                anchors.centerIn: parent
+                                width: parent.width - 16
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.globalText(shortcutRow.action)
+                                elide: Text.ElideRight
+                                color: root.globalText(shortcutRow.action) === "未设置"
+                                       ? Theme.onSurfaceVariantColor
+                                       : Theme.onSurfaceColor
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 14
+                                font.weight: Font.Medium
+                            }
+                        }
                     }
                 }
             }
         }
 
+        // 无动作
         Item {
-            width: 1
-            height: 8
+            width: content.width
+            height: 36
+            visible: !root.loading && root.errorText === "" && root.catalog.length === 0
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "没有可用的快捷键动作"
+                color: Theme.onSurfaceVariantColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+            }
         }
 
-        Text {
-            width: layout.width
-            text: "「固定按键」为系统基础操作（空格播放 / Esc 返回），只读展示；键位录制与全局快捷键注册将在后续版本接入。"
-            color: Theme.onSurfaceVariantColor
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            lineHeightMode: Text.FixedHeight
-            lineHeight: 16
-            wrapMode: Text.Wrap
+        Item {
+            width: 1
+            height: 12
+        }
+
+        SettingsNote {
+            width: content.width
+            text: "「固定键」是系统基础操作，只读展示。点击「应用内」键位可录制新快捷键，按 Esc 取消，右键可清除；全局键位由桌面系统管理，点击右上角「系统设置」调整。"
         }
     }
 }

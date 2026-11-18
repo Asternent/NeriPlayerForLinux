@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import ".."
 import "../player"
+import "../library"
 
 // 下载管理面板：任务队列（内存态）+ 已下载列表（持久索引）+ 下载目录入口。
 // 协议见 desktop/docs/protocol-download.md；进度用 downloads.changed 事件 + 500ms 节流刷新。

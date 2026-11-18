@@ -11,7 +11,11 @@ Item {
     property string title: ""
     property string icon: ""
     property string trailingText: ""
+    // 右侧可点击操作文字（旧版根目录 SectionHeader 的 API，统一后保留兼容）
+    property string actionText: ""
     default property alias trailing: trailingSlot.data
+
+    signal actionClicked()
 
     implicitHeight: Math.max(rowContent.implicitHeight, 20) + 20
 
@@ -51,6 +55,28 @@ Item {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.textStyle("labelMedium").size
             Layout.alignment: Qt.AlignVCenter
+        }
+
+        Text {
+            id: actionLabel
+
+            visible: root.actionText !== ""
+            text: root.actionText
+            color: Theme.primary
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.textStyle("labelMedium").size
+            font.weight: Font.Medium
+            Layout.alignment: Qt.AlignVCenter
+
+            HoverHandler {
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                anchors.margins: -8
+                onClicked: root.actionClicked()
+            }
         }
 
         Item {

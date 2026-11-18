@@ -1,6 +1,7 @@
 import QtQuick
 import ".."
 import "../player"
+import "../library"
 
 // 扫码登录面板：网易云 / 哔哩哔哩共用，二维码图片由后端以 base64 PNG 下发。
 // 协议见 desktop/docs/protocol-login.md。

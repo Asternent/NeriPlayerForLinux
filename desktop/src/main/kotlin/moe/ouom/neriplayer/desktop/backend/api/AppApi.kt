@@ -83,6 +83,10 @@ object AppApi {
             themePayload(container)
         }
 
+        server.on("shortcuts.catalog") {
+            buildJsonObject { put("actions", encodeAny(ShortcutCatalog.payload())) }
+        }
+
         server.on("shortcut.openGlobalSettings") {
             openGlobalShortcutSettings?.invoke()
             buildJsonObject { put("ok", openGlobalShortcutSettings != null) }

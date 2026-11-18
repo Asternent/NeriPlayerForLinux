@@ -1,6 +1,7 @@
 import QtQuick
 import "../components"
 import "../components/explore"
+import "../components/library"
 
 // 在线歌手详情页：圆形头像 + 歌曲数 + 播放全部 + 专辑网格 + 热门歌曲。
 // Nav.currentArg 是 OnlineArtist 对象（id/name/avatarUrl/songCount/source）。

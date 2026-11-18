@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import "../"
+import "../library"
 
 // 「收藏到本地歌单」弹窗：选择已有歌单或新建一个，再把当前在线歌曲批量加入。
 Popup {

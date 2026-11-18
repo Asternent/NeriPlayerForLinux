@@ -5,20 +5,36 @@ import ".."
 // 卡片外宽 150、封面 138 圆角 14、标题 bodyMedium、副标题 labelSmall、卡片圆角 16。
 //
 // 属性：
+//   entry           数据对象（OnlineCollection 或 Playlist），有值时自动映射下面各字段
 //   name            标题
 //   subtitle        副标题（如 "5 首"）
 //   coverPath       本地封面路径（Song.artworkPath），优先使用
 //   coverUrl        远程封面色 URL
 //   placeholderIcon 无封面时的占位图标（默认 music_note）
 //   cardWidth       卡片外宽（默认 150）
+// 显式传入的 name/subtitle/coverPath/coverUrl 优先于 entry 的映射值。
 // 信号：clicked()
 Item {
     id: root
 
-    property string name: ""
-    property string subtitle: ""
-    property string coverPath: ""
-    property string coverUrl: ""
+    property var entry: null
+
+    property string name: entry && entry.name !== undefined && entry.name !== null ? entry.name : ""
+    property string subtitle: {
+        if (!entry)
+            return ""
+        if (entry.trackCount !== undefined && entry.trackCount !== null && entry.trackCount > 0)
+            return entry.trackCount + " 首"
+        if (entry.songs !== undefined && entry.songs !== null)
+            return entry.songs.length + " 首"
+        if (entry.creator !== undefined && entry.creator !== null && entry.creator !== "")
+            return entry.creator
+        return ""
+    }
+    property string coverPath: entry && entry.artworkPath !== undefined && entry.artworkPath !== null
+                               ? entry.artworkPath : ""
+    property string coverUrl: entry && entry.coverUrl !== undefined && entry.coverUrl !== null
+                              ? entry.coverUrl : ""
     property string placeholderIcon: "music_note"
     property real cardWidth: 150
 

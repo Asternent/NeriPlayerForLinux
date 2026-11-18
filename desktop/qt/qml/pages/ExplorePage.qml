@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import "../components"
 import "../components/explore"
+import "../components/library"
 
 // 探索页：音源切换 + 搜索 + 搜索历史 / 热门搜索 / 风格标签 / 推荐歌单。
 // 对应 Compose 版 ExploreScreen；数据全部来自后端 online.* 命令。

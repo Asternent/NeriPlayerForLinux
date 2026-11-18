@@ -4,15 +4,21 @@ import ".."
 // 歌手卡（共享组件）。对齐旧 Compose 的 ArtistTile：
 // 卡片外宽 136、圆形头像 124、名称 bodyMedium、副标题 labelSmall（如 "5 首"）。
 //
-// 属性：name、subtitle、coverPath、coverUrl、placeholderIcon（默认 person）、cardWidth（默认 136）
+// 属性：entry、name、subtitle、coverPath、coverUrl、placeholderIcon（默认 person）、cardWidth（默认 136）
+// entry 有值时自动映射 name=entry.name、coverUrl=entry.avatarUrl、subtitle=entry.songCount+" 首"；
+// 显式传入的同名属性优先。
 // 信号：clicked()
 Item {
     id: root
 
-    property string name: ""
-    property string subtitle: ""
+    property var entry: null
+
+    property string name: entry && entry.name !== undefined && entry.name !== null ? entry.name : ""
+    property string subtitle: entry && entry.songCount !== undefined && entry.songCount !== null
+                              ? entry.songCount + " 首" : ""
     property string coverPath: ""
-    property string coverUrl: ""
+    property string coverUrl: entry && entry.avatarUrl !== undefined && entry.avatarUrl !== null
+                              ? entry.avatarUrl : ""
     property string placeholderIcon: "person"
     property real cardWidth: 136
 

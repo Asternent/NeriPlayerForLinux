@@ -250,8 +250,9 @@ Item {
                 onClicked: page.rescan()
             }
 
-            // 搜索框（本地过滤，不需要请求后端）
+            // 搜索框（本地过滤，不需要请求后端；在线音源 Tab 不适用）
             Rectangle {
+                visible: page.primaryTab !== "online"
                 Layout.preferredWidth: 240
                 Layout.preferredHeight: 40
                 Layout.leftMargin: Theme.spacingSm
@@ -811,15 +812,13 @@ Item {
             }
         }
 
-        // ---- 在线音源 Tab（后续 agent 实现）----
-        EmptyState {
+        // ---- 在线音源 Tab ----
+        OnlineSourcesTab {
             anchors.top: scanBanner.bottom
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.bottom: parent.bottom
             visible: page.primaryTab === "online"
-            icon: "cloud_off"
-            title: "在线音源迁移中"
-            hint: "网易云 / 哔哩哔哩 等在线音源将在后续版本接入"
         }
     }
 
