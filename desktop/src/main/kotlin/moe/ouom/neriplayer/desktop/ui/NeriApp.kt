@@ -102,8 +102,6 @@ private fun AppScaffold(container: AppContainer) {
     var uiTestOverlay by remember { mutableStateOf<String?>(null) }
     val locateRequest = remember { mutableStateOf<Pair<Int, String?>?>(null) }
     var showDownloadPanel by remember { mutableStateOf(false) }
-    // 从迷你播放条跳转播放页面板：值含递增序号，重复点同一面板也能重新触发
-    var panelRequest by remember { mutableStateOf<Pair<String, Long>?>(null) }
     var loginSource by remember { mutableStateOf<moe.ouom.neriplayer.desktop.core.MediaSource?>(null) }
     val testScript = remember { System.getenv("NERIPLAYER_UI_TEST").orEmpty() }
 
@@ -120,15 +118,9 @@ private fun AppScaffold(container: AppContainer) {
             backStack.add(Screen.Tab(MainTab.SETTINGS))
         }
         AppIntents.openDownloads = { showDownloadPanel = true }
-        AppIntents.openNowPlayingPanel = { panel ->
-            // 已在播放页则直接展开；否则先进播放页，由 externalOverlay/panelRequest 展开
-            panelRequest = panel to System.nanoTime()
-            if (backStack.last() !is Screen.NowPlaying) backStack.add(Screen.NowPlaying)
-        }
         onDispose {
             AppIntents.openSettings = null
             AppIntents.openDownloads = null
-            AppIntents.openNowPlayingPanel = null
         }
     }
 
@@ -262,7 +254,6 @@ private fun AppScaffold(container: AppContainer) {
                         onNext = { container.player.next() },
                         onPrevious = { container.player.previous() },
                         onSeek = { container.player.seekTo(it) },
-                        onPanel = { AppIntents.openNowPlayingPanel?.invoke(it) },
                         onOpen = { navigate(Screen.NowPlaying) },
                     )
                     NeriBottomBar(
@@ -322,7 +313,6 @@ private fun AppScaffold(container: AppContainer) {
                     onBack = { goBack() },
                     showMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
                     externalOverlay = uiTestOverlay,
-                    panelRequest = panelRequest,
                 )
 
                 Screen.Recent -> RecentScreen(

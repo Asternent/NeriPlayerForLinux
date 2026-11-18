@@ -143,7 +143,6 @@ fun MiniPlayer(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
-    onPanel: (String) -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -161,7 +160,6 @@ fun MiniPlayer(
             onNext = onNext,
             onPrevious = onPrevious,
             onSeek = onSeek,
-            onPanel = onPanel,
             onOpen = onOpen,
         )
     }
@@ -179,7 +177,6 @@ private fun MiniPlayerCard(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
-    onPanel: (String) -> Unit,
     onOpen: () -> Unit,
 ) {
     val widthModifier = if (isWideAppLayout) {
@@ -354,11 +351,22 @@ private fun MiniPlayerCard(
             val panel = openPanel
             if (panel != null) {
                 Popup(
-                    alignment = Alignment.BottomCenter,
+                    alignment = Alignment.TopEnd,
                     offset = androidx.compose.ui.unit.IntOffset(0, -8),
                     onDismissRequest = { openPanel = null },
                     properties = PopupProperties(focusable = true, dismissOnClickOutside = true),
                 ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = true,
+                        enter = androidx.compose.animation.slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec = androidx.compose.animation.core.tween(220),
+                        ),
+                        exit = androidx.compose.animation.slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = androidx.compose.animation.core.tween(180),
+                        ),
+                    ) {
                     when (panel) {
                         "volume" -> VolumePanel(
                             volume = volume,
@@ -403,6 +411,7 @@ private fun MiniPlayerCard(
                             onClose = { openPanel = null },
                             compact = true,
                         )
+                    }
                     }
                 }
             }
@@ -579,7 +588,20 @@ fun OverlayPanel(
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.45f))
                 .clickable(onClick = onClose),
-        ) { card() }
+            contentAlignment = Alignment.TopStart,
+        ) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = true,
+                enter = androidx.compose.animation.slideInHorizontally(
+                    initialOffsetX = { -it },
+                    animationSpec = androidx.compose.animation.core.tween(220),
+                ),
+                exit = androidx.compose.animation.slideOutHorizontally(
+                    targetOffsetX = { -it },
+                    animationSpec = androidx.compose.animation.core.tween(180),
+                ),
+            ) { card() }
+        }
     }
 }
 
