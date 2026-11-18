@@ -62,6 +62,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -143,6 +144,7 @@ fun MiniPlayer(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onPanelVisibilityChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -160,6 +162,7 @@ fun MiniPlayer(
             onNext = onNext,
             onPrevious = onPrevious,
             onSeek = onSeek,
+            onPanelVisibilityChange = onPanelVisibilityChange,
             onOpen = onOpen,
         )
     }
@@ -177,6 +180,7 @@ private fun MiniPlayerCard(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onPanelVisibilityChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
 ) {
     val widthModifier = if (isWideAppLayout) {
@@ -196,6 +200,10 @@ private fun MiniPlayerCard(
 
     // 就地弹出的功能面板（不跳转播放页）
     var openPanel by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(openPanel != null) {
+        onPanelVisibilityChange(openPanel != null)
+        onDispose { onPanelVisibilityChange(false) }
+    }
     val volume by container.player.volume.collectAsState()
     val queue by container.player.queue.collectAsState()
     val currentIndex by container.player.currentIndex.collectAsState()
@@ -559,9 +567,15 @@ fun OverlayPanel(
     val card: @Composable () -> Unit = {
         Surface(
             modifier = if (compact) {
-                modifier.width(380.dp).heightIn(max = 560.dp).clickable(enabled = false) {}
+                modifier.width(380.dp).heightIn(max = 560.dp)
             } else {
-                modifier.fillMaxHeight().width(420.dp).padding(12.dp).clickable(enabled = false) {}
+                // 消费面板区域的点击，避免冒泡到下层遮罩触发关闭/涟漪
+                modifier.fillMaxHeight().width(420.dp).padding(12.dp)
+                    .clickable(
+                        onClick = {},
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                    )
             },
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,

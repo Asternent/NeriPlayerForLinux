@@ -1,5 +1,8 @@
 package moe.ouom.neriplayer.desktop.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -102,6 +105,8 @@ private fun AppScaffold(container: AppContainer) {
     var uiTestOverlay by remember { mutableStateOf<String?>(null) }
     val locateRequest = remember { mutableStateOf<Pair<Int, String?>?>(null) }
     var showDownloadPanel by remember { mutableStateOf(false) }
+    // 迷你播放条功能面板展开时暗化内容区（底部栏与面板本身不受影响）
+    var miniPanelOpen by remember { mutableStateOf(false) }
     var loginSource by remember { mutableStateOf<moe.ouom.neriplayer.desktop.core.MediaSource?>(null) }
     val testScript = remember { System.getenv("NERIPLAYER_UI_TEST").orEmpty() }
 
@@ -254,6 +259,7 @@ private fun AppScaffold(container: AppContainer) {
                         onNext = { container.player.next() },
                         onPrevious = { container.player.previous() },
                         onSeek = { container.player.seekTo(it) },
+                        onPanelVisibilityChange = { miniPanelOpen = it },
                         onOpen = { navigate(Screen.NowPlaying) },
                     )
                     NeriBottomBar(
@@ -267,6 +273,8 @@ private fun AppScaffold(container: AppContainer) {
             }
         },
     ) { innerPadding ->
+        // 迷你播放条面板展开时暗化内容区；底部导航栏和面板本身在遮罩之上
+        androidx.compose.foundation.layout.Box {
         AppContentContainer(Modifier.padding(innerPadding)) {
             when (current) {
                 is Screen.Tab -> when (current.tab) {
@@ -355,6 +363,18 @@ private fun AppScaffold(container: AppContainer) {
                     showMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
                 )
             }
+        }
+        // 面板展开时暗化内容区；遮罩在内容之上、Popup 面板之下（Popup 是独立浮层窗口）
+        if (miniPanelOpen) {
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .matchParentSize()
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        miniPanelOpen = false
+                    },
+            )
+        }
         }
     }
 
