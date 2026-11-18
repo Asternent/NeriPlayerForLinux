@@ -39,6 +39,8 @@ dependencies {
     // 系统媒体控制（MPRIS over D-Bus），对应手机端的通知栏/媒体键控制
     implementation("com.github.hypfvieh:dbus-java-core:5.2.1")
     implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.2.1")
+    // 悬浮歌词锁定时用 XShape 设置输入区域，使歌词区鼠标穿透（仅控制条可点）
+    implementation("net.java.dev.jna:jna:5.6.0")
 }
 
 // ---------------------------------------------------------------------------

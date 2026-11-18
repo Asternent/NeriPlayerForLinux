@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material3.Icon
@@ -219,6 +221,31 @@ fun FloatingLyricsWindow(
         // 歌词字号、内边距与控制按钮随界面缩放一起放大
         ApplyUiScale(uiScale) {
         LaunchedEffect(Unit) { windowRef.value = window }
+
+        // 锁定时把歌词区设为鼠标穿透，仅底部控制条区域可接收点击。
+        // 解锁或窗口关闭时恢复整个窗口可交互。失败会静默降级，不影响其它功能。
+        LaunchedEffect(settings.floatingLyricsLocked, window.width, window.height) {
+            val handle = runCatching { window.windowHandle }.getOrDefault(-1L)
+            if (!settings.floatingLyricsLocked || handle <= 0) {
+                FloatingInputShape.setShape(handle)
+            } else {
+                val controlW = with(density) { 168.dp.roundToPx() }
+                val controlH = with(density) { 40.dp.roundToPx() }
+                val x = (window.width - controlW) / 2
+                val y = (window.height - controlH).coerceAtLeast(0)
+                FloatingInputShape.setShape(
+                    handle,
+                    FloatingInputShape.Rect(x, y, controlW, controlH.coerceAtMost(window.height)),
+                )
+            }
+        }
+        DisposableEffect(Unit) {
+            onDispose {
+                val handle = runCatching { window.windowHandle }.getOrDefault(-1L)
+                if (handle > 0) FloatingInputShape.setShape(handle)
+            }
+        }
+
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(600)
             println(
@@ -359,10 +386,13 @@ fun FloatingLyricsWindow(
                 }
             }
 
-            if (hovered) {
+            val locked = settings.floatingLyricsLocked
+            // 锁定时歌词区鼠标穿透，窗口收不到 hover，控制条必须常驻才点得到
+            if (hovered || locked) {
                 Row(
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 2.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color.Black.copy(alpha = 0.55f)),
                     verticalAlignment = Alignment.CenterVertically,
@@ -373,6 +403,11 @@ fun FloatingLyricsWindow(
                         if (isPlaying) "暂停" else "播放",
                     ) { container.player.togglePlayPause() }
                     FloatingControl(Icons.Outlined.SkipNext, "下一首") { container.player.next() }
+                    // 固定 / 取消固定，复用设置页的「锁定位置」状态
+                    FloatingControl(
+                        if (locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
+                        if (locked) "取消固定（可拖动）" else "固定位置",
+                    ) { container.settings.update { it.copy(floatingLyricsLocked = !locked) } }
                     FloatingControl(Icons.Outlined.Close, "关闭悬浮歌词", tint = Color(0xFFFF8A80)) {
                         container.settings.update { it.copy(floatingLyricsEnabled = false) }
                     }
