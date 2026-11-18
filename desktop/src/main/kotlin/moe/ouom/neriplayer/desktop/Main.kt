@@ -65,6 +65,15 @@ fun main() {
             position = WindowPosition(Alignment.Center),
         )
 
+        // 恢复主窗口的唯一入口。只切 visible，不碰 windowState.isMinimized。
+        // isMinimized=false 这个 setter 会让底层 AWT frame 走一次 deiconify，
+        // 在 XWayland/KWin 下反而给窗口留下清不掉的 _NET_WM_STATE_HIDDEN，
+        // 使托盘「显示主窗口」叫不回来。隐藏窗口时 frame 已被 Compose dispose，
+        // 重新 visible=true 时是全新 frame，天然是 NORMAL 状态，无需动 isMinimized。
+        fun restoreMainWindow() {
+            windowVisible = true
+        }
+
         // 托盘：优先注册状态栏指示器（SNI + DBusMenu，菜单由桌面渲染，GNOME 下点击可靠）；
         // 桌面不支持时才回退到 AWT 托盘图标（XEmbed，样式与应用一致但 GNOME 上点击易被弹层抢走）
         val statusNotifier = remember {
@@ -78,21 +87,16 @@ fun main() {
                 onTogglePlay = { container.player.togglePlayPause() },
                 onPrevious = { container.player.previous() },
                 onNext = { container.player.next() },
-                onShowWindow = {
-                    windowVisible = true
-                    windowState.isMinimized = false
-                },
+                onShowWindow = { restoreMainWindow() },
                 onToggleFloatingLyrics = {
                     container.settings.update { it.copy(floatingLyricsEnabled = !it.floatingLyricsEnabled) }
                 },
                 onOpenDownloads = {
-                    windowVisible = true
-                    windowState.isMinimized = false
+                    restoreMainWindow()
                     AppIntents.openDownloads?.invoke()
                 },
                 onOpenSettings = {
-                    windowVisible = true
-                    windowState.isMinimized = false
+                    restoreMainWindow()
                     AppIntents.openSettings?.invoke()
                 },
                 onOpenPanel = { trayPanelVisible = true },
@@ -161,11 +165,19 @@ fun main() {
             }
         }
 
-        // 最小化时隐藏到托盘（仍继续播放）
+        // 最小化时隐藏到托盘（仍继续播放）。
+        // 用户点最小化 → 底层 AWT frame 已被 iconify（KWin 侧留下 HIDDEN）；
+        // 这里先隐藏窗口让 Compose dispose 掉那个 frame，再清 isMinimized。
+        // 关键：清 isMinimized 必须在 frame 已 dispose 之后——若在有 frame 时清，
+        // setter 会触发一次 deiconify/iconify 往返，在 XWayland/KWin 下反而留下
+        // 清不掉的 _NET_WM_STATE_HIDDEN，导致托盘「显示主窗口」叫不回来。
+        // 隐藏后再清时没有 frame 可操作，setter 不触碰 AWT，只是把状态归零，
+        // 下次 visible=true 创建的全新 frame 就是干净的 NORMAL 状态。
         LaunchedEffect(windowState.isMinimized, settings.minimizeToTray, backgroundAvailable) {
             if (windowState.isMinimized && settings.minimizeToTray && backgroundAvailable) {
-                windowState.isMinimized = false
                 windowVisible = false
+                kotlinx.coroutines.delay(100)
+                windowState.isMinimized = false
             }
         }
 
@@ -189,19 +201,14 @@ fun main() {
         TrayControlPanel(
             container = container,
             visible = trayPanelVisible,
+            waylandAutoDismiss = !isWaylandSession(),
             onDismiss = { trayPanelVisible = false },
-            onShowWindow = {
-                windowVisible = true
-                windowState.isMinimized = false
-            },
+            onShowWindow = { restoreMainWindow() },
         )
 
         // 系统媒体控制（MPRIS）：桌面媒体组件 / 媒体键 / playerctl 可以直接控制播放
         DisposableEffect(Unit) {
-            AppIntents.showMainWindow = {
-                windowVisible = true
-                windowState.isMinimized = false
-            }
+            AppIntents.showMainWindow = { restoreMainWindow() }
             AppIntents.hideMainWindow = {
                 // 等价于「关闭窗口收进托盘」：窗口隐藏、播放继续
                 windowVisible = false
@@ -213,10 +220,7 @@ fun main() {
             AppIntents.toggleTrayPanel = {
                 trayPanelVisible = !trayPanelVisible
             }
-            container.mpris.onRaise = {
-                windowVisible = true
-                windowState.isMinimized = false
-            }
+            container.mpris.onRaise = { restoreMainWindow() }
             container.mpris.onQuit = {
                 container.player.persistQueueState()
                 exitApplication()
@@ -241,6 +245,11 @@ fun main() {
         }
     }
 }
+
+/** Wayland 会话判定：托盘面板的「鼠标移开自动收起」依赖 AWT 全局指针坐标，Wayland 下不可靠。 */
+private fun isWaylandSession(): Boolean =
+    System.getenv("XDG_SESSION_TYPE").equals("wayland", ignoreCase = true) ||
+        !System.getenv("WAYLAND_DISPLAY").isNullOrBlank()
 
 private fun handleShortcut(event: KeyEvent, container: AppContainer): Boolean {
     if (event.type != KeyEventType.KeyDown) return false

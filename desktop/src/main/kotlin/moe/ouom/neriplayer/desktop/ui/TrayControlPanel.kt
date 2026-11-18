@@ -80,6 +80,7 @@ private const val PANEL_HEIGHT = 436
 fun TrayControlPanel(
     container: AppContainer,
     visible: Boolean,
+    waylandAutoDismiss: Boolean = true,
     onDismiss: () -> Unit,
     onShowWindow: () -> Unit,
 ) {
@@ -133,6 +134,7 @@ fun TrayControlPanel(
                     settings = settings,
                     panelWidthPx = panelWidthPx,
                     panelHeightPx = panelHeightPx,
+                    waylandAutoDismiss = waylandAutoDismiss,
                     onDismiss = onDismiss,
                     onShowWindow = onShowWindow,
                 )
@@ -152,6 +154,7 @@ private fun FrameWindowScope.PanelContent(
     settings: AppSettings,
     panelWidthPx: Int,
     panelHeightPx: Int,
+    waylandAutoDismiss: Boolean,
     onDismiss: () -> Unit,
     onShowWindow: () -> Unit,
 ) {
@@ -195,6 +198,10 @@ private fun FrameWindowScope.PanelContent(
         //    这里刻意**不用**「失焦就收起」——应用在后台时窗口管理器经常不给弹出窗口焦点
         //    （焦点跟随鼠标 / 焦点窃取保护），那样面板会刚出现就自己消失，
         //    用户看到的就是「菜单弹出来了，但点按钮没反应」。
+        //    Wayland 下 MouseInfo 拿不到可靠的全局指针坐标，继续按它判定会把面板
+        //    约 1.2 秒后误关（用户根本来不及点「显示主窗口」），因此 Wayland 下
+        //    只保留 Esc / 显式关闭按钮 / 面板内操作完成三种收起方式，不做基于指针的自动收起。
+        if (!waylandAutoDismiss) return@LaunchedEffect
         delay(1500)
         var awaySince = 0L
         while (true) {
