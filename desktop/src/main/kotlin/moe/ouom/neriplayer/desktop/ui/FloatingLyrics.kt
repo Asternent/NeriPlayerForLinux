@@ -221,6 +221,20 @@ fun FloatingLyricsWindow(
         // 歌词字号、内边距与控制按钮随界面缩放一起放大
         ApplyUiScale(uiScale) {
         LaunchedEffect(Unit) { windowRef.value = window }
+
+        // 锁定时整窗鼠标穿透：点击落到下层窗口；解锁/关闭时恢复。
+        // 依赖窗口已映射到 X11，延迟到窗口尺寸就绪后再应用。
+        LaunchedEffect(settings.floatingLyricsLocked, window.width, window.height) {
+            val handle = runCatching { window.windowHandle }.getOrDefault(-1L)
+            FloatingInputShape.setPassThrough(handle, settings.floatingLyricsLocked && handle > 0)
+        }
+        DisposableEffect(Unit) {
+            onDispose {
+                val handle = runCatching { window.windowHandle }.getOrDefault(-1L)
+                if (handle > 0) FloatingInputShape.setPassThrough(handle, false)
+            }
+        }
+
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(600)
             println(
@@ -332,8 +346,8 @@ fun FloatingLyricsWindow(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         ) {
             Column(
-                // 底部预留 50dp 与窗口增高量抵消，使歌词维持在视觉中心、不与控制条重叠
-                modifier = Modifier.fillMaxSize().padding(bottom = 50.dp),
+                // 底部预留 30dp 与窗口增高量抵消，使歌词维持在视觉中心、不与控制条重叠
+                modifier = Modifier.fillMaxSize().padding(bottom = 30.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = when (alignment) {
                     FloatingLyricAlignment.LEFT -> Alignment.Start
