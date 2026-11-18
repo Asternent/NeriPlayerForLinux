@@ -78,6 +78,7 @@ import moe.ouom.neriplayer.desktop.ui.EqualizerPresets
 import moe.ouom.neriplayer.desktop.ui.LoginDialog
 import moe.ouom.neriplayer.desktop.ui.SyncSettingsSection
 import moe.ouom.neriplayer.desktop.ui.FloatingLyricsSettingsSection
+import moe.ouom.neriplayer.desktop.ui.ShortcutSettingsSection
 import moe.ouom.neriplayer.desktop.ui.DownloadSettingsSection
 import moe.ouom.neriplayer.desktop.ui.BackgroundSettingsSection
 import moe.ouom.neriplayer.desktop.ui.theme.colorFromHex
@@ -545,6 +546,13 @@ fun SettingsScreen(
 
         item {
             FloatingLyricsSettingsSection(
+                container = container,
+                showMessage = showMessage,
+            )
+        }
+
+        item {
+            ShortcutSettingsSection(
                 container = container,
                 showMessage = showMessage,
             )

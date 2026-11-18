@@ -150,6 +150,8 @@ fun NowPlayingScreen(
 
     val lyricIndex = remember(lyrics, position) { currentLyricIndex(lyrics.lines, position) }
 
+    val backBinding = container.settings.state.collectAsState().value.shortcuts
+        .let { it.bindingFor(moe.ouom.neriplayer.desktop.core.ShortcutAction.NAV_BACK) }
     val backKeyFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) {
         runCatching { backKeyFocusRequester.requestFocus() }
@@ -160,10 +162,8 @@ fun NowPlayingScreen(
             .focusable(interactionSource = remember { MutableInteractionSource() })
             .focusRequester(backKeyFocusRequester)
             .onKeyEvent { event ->
-                // Escape / 返回键：退出播放页回到上一个页面（通常是主页）
-                if (event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Escape || event.key == Key.Back)
-                ) {
+                // 返回键按用户配置匹配（默认 Escape），退出播放页回到上一页
+                if (event.type == KeyEventType.KeyDown && backBinding.matches(event)) {
                     onBack()
                     true
                 } else {

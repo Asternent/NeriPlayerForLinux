@@ -1,9 +1,7 @@
 package moe.ouom.neriplayer.desktop
 
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +30,7 @@ import moe.ouom.neriplayer.desktop.ui.AppIntents
 import moe.ouom.neriplayer.desktop.ui.TrayControlPanel
 import moe.ouom.neriplayer.desktop.ui.setupDesktopLookAndFeel
 import moe.ouom.neriplayer.desktop.core.PlaybackState
+import moe.ouom.neriplayer.desktop.core.ShortcutAction
 import moe.ouom.neriplayer.desktop.core.UiScale
 import moe.ouom.neriplayer.desktop.core.StatusNotifierService
 import moe.ouom.neriplayer.desktop.ui.ApplyUiScale
@@ -76,6 +75,32 @@ fun main() {
         // 重新 visible=true 时是全新 frame，天然是 NORMAL 状态，无需动 isMinimized。
         fun restoreMainWindow() {
             windowVisible = true
+        }
+
+        // 全局快捷键：设置变化（绑定或开关）时重新向 portal 注册。
+        // 仅注册声明支持全局的动作；导航类动作留在程序内，避免抢走桌面按键。
+        val globalShortcuts = remember { moe.ouom.neriplayer.desktop.core.GlobalShortcutsPortal { actionId ->
+            val action = ShortcutAction.fromId(actionId)
+            if (action != null) {
+                moe.ouom.neriplayer.desktop.ui.ShortcutDispatcher.dispatch(action, container)
+            }
+        } }
+        LaunchedEffect(settings.shortcuts) {
+            globalShortcuts.stop()
+            if (settings.shortcuts.globalEnabled) {
+                val bindings = ShortcutAction.entries
+                    .filter { it.globalSupported }
+                    .map { it to settings.shortcuts.bindingFor(it) }
+                    .filter { it.second.isBound }
+                if (bindings.isNotEmpty()) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        globalShortcuts.register(bindings)
+                    }
+                }
+            }
+        }
+        DisposableEffect(Unit) {
+            onDispose { globalShortcuts.stop() }
         }
 
         // 托盘：优先注册状态栏指示器（SNI + DBusMenu，菜单由桌面渲染，GNOME 下点击可靠）；
@@ -228,6 +253,10 @@ fun main() {
             AppIntents.toggleTrayPanel = {
                 trayPanelVisible = !trayPanelVisible
             }
+            // 快捷键（含全局）通过统一调度器触发控制面板
+            moe.ouom.neriplayer.desktop.ui.ShortcutDispatcher.onToggleTrayPanel = {
+                trayPanelVisible = !trayPanelVisible
+            }
             container.mpris.onRaise = { restoreMainWindow() }
             container.mpris.onQuit = {
                 container.player.persistQueueState()
@@ -238,6 +267,7 @@ fun main() {
                 AppIntents.hideMainWindow = null
                 AppIntents.quit = null
                 AppIntents.toggleTrayPanel = null
+                moe.ouom.neriplayer.desktop.ui.ShortcutDispatcher.onToggleTrayPanel = null
                 container.mpris.onRaise = null
                 container.mpris.onQuit = null
             }
@@ -259,51 +289,17 @@ private fun isWaylandSession(): Boolean =
     System.getenv("XDG_SESSION_TYPE").equals("wayland", ignoreCase = true) ||
         !System.getenv("WAYLAND_DISPLAY").isNullOrBlank()
 
+/**
+ * 程序内快捷键：按用户配置（设置页 → 快捷键）匹配，未配置时用默认绑定。
+ * 默认绑定与旧版硬编码行为一致：Space 播放暂停、Ctrl+←/→ 切歌、←/→ 快进、↑/↓ 音量、Ctrl+L 悬浮歌词。
+ */
 private fun handleShortcut(event: KeyEvent, container: AppContainer): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
-    val player = container.player
-    return when {
-        event.key == Key.Spacebar -> {
-            player.togglePlayPause()
-            true
+    val shortcuts = container.settings.current.shortcuts
+    for (action in ShortcutAction.entries) {
+        if (shortcuts.bindingFor(action).matches(event)) {
+            return moe.ouom.neriplayer.desktop.ui.ShortcutDispatcher.dispatch(action, container)
         }
-
-        event.isCtrlPressed && event.key == Key.DirectionRight -> {
-            player.next()
-            true
-        }
-
-        event.isCtrlPressed && event.key == Key.DirectionLeft -> {
-            player.previous()
-            true
-        }
-
-        event.key == Key.DirectionRight -> {
-            player.seekTo(player.positionMs.value + 5_000L)
-            true
-        }
-
-        event.key == Key.DirectionLeft -> {
-            player.seekTo(player.positionMs.value - 5_000L)
-            true
-        }
-
-        event.key == Key.DirectionUp -> {
-            player.setVolume(player.volume.value + 0.05f)
-            true
-        }
-
-        event.key == Key.DirectionDown -> {
-            player.setVolume(player.volume.value - 0.05f)
-            true
-        }
-
-        event.isCtrlPressed && event.key == Key.L -> {
-            val enabled = !container.settings.current.floatingLyricsEnabled
-            container.settings.update { it.copy(floatingLyricsEnabled = enabled) }
-            true
-        }
-
-        else -> false
     }
+    return false
 }

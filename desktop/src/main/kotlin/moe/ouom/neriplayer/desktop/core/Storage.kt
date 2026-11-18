@@ -163,6 +163,10 @@ data class AppSettings(
     val mprisEnabled: Boolean = true,
     /** 是否已经提示过「已最小化到托盘」。 */
     val trayHintShown: Boolean = false,
+
+    // ---------------------------------------------------------------- 快捷键
+    /** 程序内 / 全局快捷键绑定。 */
+    val shortcuts: ShortcutSettings = ShortcutSettings(),
 )
 
 /** 设置仓库：内存 StateFlow + JSON 持久化。 */

@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import moe.ouom.neriplayer.desktop.core.DarkModeSetting
+import moe.ouom.neriplayer.desktop.core.ShortcutAction
 import moe.ouom.neriplayer.desktop.ui.screens.ExploreScreen
 import moe.ouom.neriplayer.desktop.ui.screens.HomeScreen
 import moe.ouom.neriplayer.desktop.ui.screens.LibraryScreen
@@ -123,9 +124,46 @@ private fun AppScaffold(container: AppContainer) {
             backStack.add(Screen.Tab(MainTab.SETTINGS))
         }
         AppIntents.openDownloads = { showDownloadPanel = true }
+        // 快捷键的导航类动作：与顶栏/侧栏点击走同一套 backStack 逻辑
+        ShortcutDispatcher.onNavigate = { action ->
+            when (action) {
+                ShortcutAction.NAV_BACK -> {
+                    if (backStack.size > 1) {
+                        backStack.removeAt(backStack.lastIndex)
+                    } else {
+                        // 已经在根页面，返回键回到首页
+                        backStack.clear()
+                        backStack.add(Screen.Tab(MainTab.HOME))
+                    }
+                }
+                ShortcutAction.NAV_HOME -> {
+                    backStack.clear()
+                    backStack.add(Screen.Tab(MainTab.HOME))
+                }
+                ShortcutAction.NAV_EXPLORE -> {
+                    backStack.clear()
+                    backStack.add(Screen.Tab(MainTab.EXPLORE))
+                }
+                ShortcutAction.NAV_LIBRARY -> {
+                    backStack.clear()
+                    backStack.add(Screen.Tab(MainTab.LIBRARY))
+                }
+                ShortcutAction.NAV_SETTINGS -> {
+                    backStack.clear()
+                    backStack.add(Screen.Tab(MainTab.SETTINGS))
+                }
+                ShortcutAction.OPEN_NOW_PLAYING -> {
+                    if (backStack.last() !is Screen.NowPlaying) backStack.add(Screen.NowPlaying)
+                }
+                else -> Unit
+            }
+        }
+        ShortcutDispatcher.onOpenDownloads = { showDownloadPanel = true }
         onDispose {
             AppIntents.openSettings = null
             AppIntents.openDownloads = null
+            ShortcutDispatcher.onNavigate = null
+            ShortcutDispatcher.onOpenDownloads = null
         }
     }
 
