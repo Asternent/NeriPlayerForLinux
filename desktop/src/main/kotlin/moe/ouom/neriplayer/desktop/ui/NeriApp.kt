@@ -243,6 +243,7 @@ private fun AppScaffold(container: AppContainer) {
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
@@ -273,8 +274,6 @@ private fun AppScaffold(container: AppContainer) {
             }
         },
     ) { innerPadding ->
-        // 迷你播放条面板展开时暗化内容区；底部导航栏和面板本身在遮罩之上
-        androidx.compose.foundation.layout.Box {
         AppContentContainer(Modifier.padding(innerPadding)) {
             when (current) {
                 is Screen.Tab -> when (current.tab) {
@@ -364,18 +363,18 @@ private fun AppScaffold(container: AppContainer) {
                 )
             }
         }
-        // 面板展开时暗化内容区；遮罩在内容之上、Popup 面板之下（Popup 是独立浮层窗口）
-        if (miniPanelOpen) {
-            androidx.compose.foundation.layout.Box(
-                Modifier
-                    .matchParentSize()
-                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        miniPanelOpen = false
-                    },
-            )
-        }
-        }
+    }
+    // 面板展开时暗化整条界面（含控制栏与导航栏）；Popup 面板作为独立浮层仍在遮罩之上
+    if (miniPanelOpen) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    miniPanelOpen = false
+                },
+        )
+    }
     }
 
     if (showOnboarding) {

@@ -603,34 +603,40 @@ fun OverlayPanel(
     if (compact) {
         card()
     } else {
-        // 遮罩与面板拆成兄弟层：点面板不会冒泡到遮罩，避免涟漪穿透/误关闭。
-        Box(Modifier.fillMaxSize()) {
-            // 遮罩层（最底，点击关闭；无涟漪特效，安静待在面板下层）
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .clickable(
-                        onClick = onClose,
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                    ),
-            )
-            // 面板层（在遮罩之上，靠左；面板自身有 Surface 背景，点击不与遮罩共享）
-            Box(Modifier.matchParentSize(), contentAlignment = Alignment.TopStart) {
-                var show by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { show = true }
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = show,
-                    enter = androidx.compose.animation.slideInHorizontally(
-                        initialOffsetX = { -it },
-                        animationSpec = androidx.compose.animation.core.tween(220),
-                    ),
-                    exit = androidx.compose.animation.slideOutHorizontally(
-                        targetOffsetX = { -it },
-                        animationSpec = androidx.compose.animation.core.tween(180),
-                    ),
-                ) { card() }
+        // 用 Popup 覆盖整个窗口，避开内容区左右 padding，遮罩能铺满全宽。
+        Popup(
+            alignment = Alignment.TopStart,
+            onDismissRequest = onClose,
+            properties = PopupProperties(focusable = true, dismissOnClickOutside = false),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                // 遮罩层（最底，点击面板外关闭；无涟漪特效）
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(
+                            onClick = onClose,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                        ),
+                )
+                // 面板层（遮罩之上，靠左滑入）
+                Box(Modifier.matchParentSize(), contentAlignment = Alignment.TopStart) {
+                    var show by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { show = true }
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = show,
+                        enter = androidx.compose.animation.slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = androidx.compose.animation.core.tween(220),
+                        ),
+                        exit = androidx.compose.animation.slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = androidx.compose.animation.core.tween(180),
+                        ),
+                    ) { card() }
+                }
             }
         }
     }
