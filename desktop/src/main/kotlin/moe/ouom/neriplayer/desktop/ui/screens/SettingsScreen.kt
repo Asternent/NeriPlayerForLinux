@@ -12,14 +12,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -108,14 +107,16 @@ fun SettingsScreen(
     val accounts by container.accounts.state.collectAsState()
     var seedInput by remember(settings.themeSeedColor) { mutableStateOf(settings.themeSeedColor) }
 
-    // 横屏（宽窗口）布局下改成两栏，让设置项铺满窗口而不是拉成一条长列表
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(if (isWideAppLayout) 2 else 1),
+    // 横屏（宽窗口）下用瀑布流排成两栏：各卡片按自身高度独立排列，
+    // 短卡片下方空出来的位置会被同列下一张卡片填上，不会为对齐而行底留一大片空白。
+    LazyVerticalStaggeredGrid(
+        columns = StaggeredGridCells.Fixed(if (isWideAppLayout) 2 else 1),
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalItemSpacing = 12.dp,
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { TopAppBar(title = { Text("设置") }) }
+        item(span = StaggeredGridItemSpan.FullLine) { TopAppBar(title = { Text("设置") }) }
 
         item {
             AccountSettingsSection(
@@ -586,7 +587,7 @@ fun SettingsScreen(
             }
         }
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
+        item(span = StaggeredGridItemSpan.FullLine) {
             SettingsSection(
                 title = "关于",
                 description = "版本信息、运行环境与数据管理",
@@ -705,7 +706,7 @@ private fun SettingsSection(
 ) {
     var expanded by remember { mutableStateOf(true) }
     Surface(
-        modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
