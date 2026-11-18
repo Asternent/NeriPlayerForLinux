@@ -40,6 +40,10 @@ import moe.ouom.neriplayer.desktop.ui.platformUiScale
 import kotlinx.coroutines.delay
 
 fun main() {
+    // 单实例：若已有实例在跑，唤起它的窗口后直接退出，避免多开互相抢托盘/媒体控制
+    if (!moe.ouom.neriplayer.desktop.core.SingleInstance.acquire()) {
+        kotlin.system.exitProcess(0)
+    }
     setupDesktopLookAndFeel()
     val container = AppContainer()
     container.bootstrap()
