@@ -88,12 +88,16 @@ fun main() {
                 },
                 playing = { container.player.state.value == PlaybackState.PLAYING },
                 floatingLyricsEnabled = { container.settings.current.floatingLyricsEnabled },
+                floatingLyricsLocked = { container.settings.current.floatingLyricsLocked },
                 onTogglePlay = { container.player.togglePlayPause() },
                 onPrevious = { container.player.previous() },
                 onNext = { container.player.next() },
                 onShowWindow = { restoreMainWindow() },
                 onToggleFloatingLyrics = {
                     container.settings.update { it.copy(floatingLyricsEnabled = !it.floatingLyricsEnabled) }
+                },
+                onToggleFloatingLyricsLock = {
+                    container.settings.update { it.copy(floatingLyricsLocked = !it.floatingLyricsLocked) }
                 },
                 onOpenDownloads = {
                     restoreMainWindow()

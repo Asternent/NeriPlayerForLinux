@@ -60,17 +60,20 @@ private object TrayMenuIds {
     const val SEPARATOR_BOTTOM = 9
     const val OPEN_PANEL = 10
     const val QUIT = 12
+    const val LOCK_FLOATING_LYRICS = 13
 }
 
 class StatusNotifierService(
     private val title: () -> String,
     private val playing: () -> Boolean,
     private val floatingLyricsEnabled: () -> Boolean,
+    private val floatingLyricsLocked: () -> Boolean,
     private val onTogglePlay: () -> Unit,
     private val onPrevious: () -> Unit,
     private val onNext: () -> Unit,
     private val onShowWindow: () -> Unit,
     private val onToggleFloatingLyrics: () -> Unit,
+    private val onToggleFloatingLyricsLock: () -> Unit,
     private val onOpenDownloads: () -> Unit,
     private val onOpenSettings: () -> Unit,
     private val onOpenPanel: () -> Unit,
@@ -135,6 +138,14 @@ class StatusNotifierService(
                     checked = floatingLyricsEnabled(),
                 ),
             )
+            add(
+                TrayMenuItem(
+                    TrayMenuIds.LOCK_FLOATING_LYRICS,
+                    if (floatingLyricsLocked()) "固定歌词位置（已固定）" else "固定歌词位置",
+                    toggle = "checkmark",
+                    checked = floatingLyricsLocked(),
+                ),
+            )
             add(TrayMenuItem(TrayMenuIds.DOWNLOADS, "下载管理"))
             add(TrayMenuItem(TrayMenuIds.SETTINGS, "设置"))
             add(TrayMenuItem(TrayMenuIds.SEPARATOR_BOTTOM, "", type = "separator"))
@@ -180,6 +191,7 @@ class StatusNotifierService(
             TrayMenuIds.NEXT -> onNext()
             TrayMenuIds.SHOW_WINDOW -> onShowWindow()
             TrayMenuIds.FLOATING_LYRICS -> onToggleFloatingLyrics()
+            TrayMenuIds.LOCK_FLOATING_LYRICS -> onToggleFloatingLyricsLock()
             TrayMenuIds.DOWNLOADS -> onOpenDownloads()
             TrayMenuIds.SETTINGS -> onOpenSettings()
             TrayMenuIds.OPEN_PANEL -> onOpenPanel()

@@ -386,17 +386,17 @@ fun FloatingLyricsWindow(
                         .background(Color.Black.copy(alpha = 0.55f)),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 固定 / 取消固定放第一位，使中间的播放控制按钮保持视觉居中
+                    FloatingControl(
+                        if (locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
+                        if (locked) "取消固定（可拖动）" else "固定位置",
+                    ) { container.settings.update { it.copy(floatingLyricsLocked = !locked) } }
                     FloatingControl(Icons.Outlined.SkipPrevious, "上一首") { container.player.previous() }
                     FloatingControl(
                         if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         if (isPlaying) "暂停" else "播放",
                     ) { container.player.togglePlayPause() }
                     FloatingControl(Icons.Outlined.SkipNext, "下一首") { container.player.next() }
-                    // 固定 / 取消固定，复用设置页的「锁定位置」状态
-                    FloatingControl(
-                        if (locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
-                        if (locked) "取消固定（可拖动）" else "固定位置",
-                    ) { container.settings.update { it.copy(floatingLyricsLocked = !locked) } }
                     FloatingControl(Icons.Outlined.Close, "关闭悬浮歌词", tint = Color(0xFFFF8A80)) {
                         container.settings.update { it.copy(floatingLyricsEnabled = false) }
                     }
