@@ -10,6 +10,8 @@ object AppIntents {
     var hideMainWindow: (() -> Unit)? = null
     var openSettings: (() -> Unit)? = null
     var openDownloads: (() -> Unit)? = null
+    /** 打开播放页并展开指定面板：queue/volume/sleep/effects/more 等。 */
+    var openNowPlayingPanel: ((String) -> Unit)? = null
     var toggleTrayPanel: (() -> Unit)? = null
     var quit: (() -> Unit)? = null
 }

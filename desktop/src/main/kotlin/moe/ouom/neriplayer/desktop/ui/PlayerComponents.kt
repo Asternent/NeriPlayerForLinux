@@ -63,6 +63,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -81,6 +82,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import moe.ouom.neriplayer.desktop.core.LyricLine
 import moe.ouom.neriplayer.desktop.core.Song
 import kotlin.math.roundToInt
@@ -130,6 +133,8 @@ fun NeriBottomBar(
 
 @Composable
 fun MiniPlayer(
+    container: moe.ouom.neriplayer.desktop.core.AppContainer,
+    settings: moe.ouom.neriplayer.desktop.core.AppSettings,
     song: Song?,
     isPlaying: Boolean,
     positionMs: Long,
@@ -138,6 +143,7 @@ fun MiniPlayer(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onPanel: (String) -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -145,6 +151,8 @@ fun MiniPlayer(
     // 窄窗口下迷你播放器居中收拢；横屏布局下铺满内容区，形成一条完整的播放条
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         MiniPlayerCard(
+            container = container,
+            settings = settings,
             song = song,
             isPlaying = isPlaying,
             positionMs = positionMs,
@@ -153,6 +161,7 @@ fun MiniPlayer(
             onNext = onNext,
             onPrevious = onPrevious,
             onSeek = onSeek,
+            onPanel = onPanel,
             onOpen = onOpen,
         )
     }
@@ -160,6 +169,8 @@ fun MiniPlayer(
 
 @Composable
 private fun MiniPlayerCard(
+    container: moe.ouom.neriplayer.desktop.core.AppContainer,
+    settings: moe.ouom.neriplayer.desktop.core.AppSettings,
     song: Song,
     isPlaying: Boolean,
     positionMs: Long,
@@ -168,6 +179,7 @@ private fun MiniPlayerCard(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onPanel: (String) -> Unit,
     onOpen: () -> Unit,
 ) {
     val widthModifier = if (isWideAppLayout) {
@@ -185,6 +197,18 @@ private fun MiniPlayerCard(
     var dragValue by remember { mutableFloatStateOf(0f) }
     val progress = if (dragging) dragValue else (positionMs.toFloat() / safeDuration).coerceIn(0f, 1f)
 
+    // 就地弹出的功能面板（不跳转播放页）
+    var openPanel by remember { mutableStateOf<String?>(null) }
+    val volume by container.player.volume.collectAsState()
+    val queue by container.player.queue.collectAsState()
+    val currentIndex by container.player.currentIndex.collectAsState()
+    val sleepTimer by container.player.sleepTimer.collectAsState()
+    val speed by container.player.speed.collectAsState()
+    val pitch by container.player.pitch.collectAsState()
+    val loudness by container.player.loudness.collectAsState()
+    val eqEnabled by container.player.equalizerEnabled.collectAsState()
+    val eqBands by container.player.equalizerBands.collectAsState()
+
     Surface(
         modifier = widthModifier
             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -201,7 +225,7 @@ private fun MiniPlayerCard(
     ) {
         // Box 根容器：进度条绝对定位贴顶、不占布局高度；歌曲信息行在整张卡片里垂直居中，
         // 避免进度条容器的高度把信息挤得偏下。
-        Box(Modifier.heightIn(min = 58.dp)) {
+        Box(Modifier.heightIn(min = 70.dp)) {
             val barTrackColor = MaterialTheme.colorScheme.surfaceVariant
             val barActiveColor = MaterialTheme.colorScheme.primary
             Box(
@@ -246,41 +270,140 @@ private fun MiniPlayerCard(
                 modifier = Modifier
                     .matchParentSize()
                     .wrapContentHeight(Alignment.CenterVertically)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SongArtwork(song, size = 42.dp, shape = RoundedCornerShape(10.dp))
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = song.displayName(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarqueeIfLong(),
-                    )
-                    Text(
-                        text = song.artistText(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarqueeIfLong(),
-                    )
+                // 左侧：封面 + 歌曲信息，与右侧区域等宽，保证中间播放按钮严格水平居中
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    SongArtwork(song, size = 42.dp, shape = RoundedCornerShape(10.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = song.displayName(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarqueeIfLong(),
+                        )
+                        Text(
+                            text = song.artistText(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarqueeIfLong(),
+                        )
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Outlined.SkipPrevious, contentDescription = "上一首", modifier = Modifier.size(22.dp))
+                // 中间：播放控制，水平居中
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Outlined.SkipPrevious, contentDescription = "上一首", modifier = Modifier.size(22.dp))
+                    }
+                    FilledIconButton(onClick = onToggle, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "暂停" else "播放",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Outlined.SkipNext, contentDescription = "下一首", modifier = Modifier.size(22.dp))
+                    }
                 }
-                FilledIconButton(onClick = onToggle, modifier = Modifier.size(38.dp)) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
-                        modifier = Modifier.size(22.dp),
-                    )
+                // 右侧：播放页里的那一票功能按钮，与左侧等宽、靠右排列
+                Row(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { openPanel = "volume" }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Outlined.VolumeUp, contentDescription = "音量", modifier = Modifier.size(19.dp))
+                    }
+                    IconButton(onClick = { openPanel = "effects" }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Outlined.GraphicEq, contentDescription = "音效与倍速", modifier = Modifier.size(19.dp))
+                    }
+                    IconButton(onClick = { openPanel = "queue" }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Outlined.QueueMusic, contentDescription = "播放队列", modifier = Modifier.size(19.dp))
+                    }
+                    IconButton(onClick = { openPanel = "sleep" }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Outlined.Timer, contentDescription = "睡眠定时器", modifier = Modifier.size(19.dp))
+                    }
+                    IconButton(
+                        onClick = {
+                            val enabled = !settings.floatingLyricsEnabled
+                            container.settings.update { it.copy(floatingLyricsEnabled = enabled) }
+                        },
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.Lyrics,
+                            contentDescription = "悬浮歌词",
+                            modifier = Modifier.size(19.dp),
+                            tint = if (settings.floatingLyricsEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    }
                 }
-                IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Outlined.SkipNext, contentDescription = "下一首", modifier = Modifier.size(22.dp))
+            }
+
+            // 就地弹出的功能面板：贴在控制栏上方居中，不跳转播放页
+            val panel = openPanel
+            if (panel != null) {
+                Popup(
+                    alignment = Alignment.BottomCenter,
+                    offset = androidx.compose.ui.unit.IntOffset(0, -8),
+                    onDismissRequest = { openPanel = null },
+                    properties = PopupProperties(focusable = true, dismissOnClickOutside = true),
+                ) {
+                    when (panel) {
+                        "volume" -> VolumePanel(
+                            volume = volume,
+                            onVolume = { container.player.setVolume(it) },
+                            onClose = { openPanel = null },
+                            compact = true,
+                        )
+                        "effects" -> PlaybackEffectsPanel(
+                            speed = speed,
+                            pitch = pitch,
+                            loudness = loudness,
+                            equalizerEnabled = eqEnabled,
+                            equalizerPreset = settings.equalizerPreset,
+                            equalizerBands = eqBands,
+                            supportsEffects = container.player.supportsEffects,
+                            onSpeed = { container.player.setSpeed(it) },
+                            onPitch = { container.player.setPitch(it) },
+                            onLoudness = { container.player.setLoudness(it) },
+                            onPreset = { name, bands -> container.player.setEqualizerPreset(name, bands) },
+                            onBand = { index, gain -> container.player.setEqualizerBand(index, gain) },
+                            onReset = { container.player.resetEffects() },
+                            onClose = { openPanel = null },
+                            compact = true,
+                        )
+                        "queue" -> QueuePanel(
+                            queue = queue,
+                            currentIndex = currentIndex,
+                            onClose = { openPanel = null },
+                            onPlayIndex = { index -> container.player.setQueue(queue, index, autoPlay = true) },
+                            onRemoveIndex = { index -> container.player.removeFromQueue(index) },
+                            onMoveIndex = { from, to -> container.player.moveInQueue(from, to) },
+                            onClear = { container.player.clearQueue(); openPanel = null },
+                            compact = true,
+                        )
+                        "sleep" -> SleepTimerPanel(
+                            remainingSeconds = sleepTimer.remainingSeconds,
+                            stopAfterCurrent = sleepTimer.stopAfterCurrent,
+                            defaultMinutes = settings.sleepTimerMinutes,
+                            onStart = { container.player.startSleepTimer(it) },
+                            onStopAfterCurrent = { container.player.stopAfterCurrentSong(); openPanel = null },
+                            onCancelTimer = { container.player.cancelSleepTimer() },
+                            onClose = { openPanel = null },
+                            compact = true,
+                        )
+                    }
                 }
             }
         }
@@ -414,25 +537,22 @@ fun OverlayPanel(
     title: String,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** true 时渲染成自适应高度的紧凑卡片（供迷你播放条的 Popup 就地弹出使用）。 */
+    compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onClose),
-    ) {
+    val card: @Composable () -> Unit = {
         Surface(
-            modifier = modifier
-                .fillMaxHeight()
-                .width(420.dp)
-                .padding(12.dp)
-                .clickable(enabled = false) {},
+            modifier = if (compact) {
+                modifier.width(380.dp).heightIn(max = 560.dp).clickable(enabled = false) {}
+            } else {
+                modifier.fillMaxHeight().width(420.dp).padding(12.dp).clickable(enabled = false) {}
+            },
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             tonalElevation = 6.dp,
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(if (compact) Modifier else Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -451,6 +571,16 @@ fun OverlayPanel(
             }
         }
     }
+    if (compact) {
+        card()
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(onClick = onClose),
+        ) { card() }
+    }
 }
 
 @Composable
@@ -462,8 +592,9 @@ fun QueuePanel(
     onRemoveIndex: (Int) -> Unit,
     onMoveIndex: (Int, Int) -> Unit,
     onClear: () -> Unit,
+    compact: Boolean = false,
 ) {
-    OverlayPanel(title = "播放队列（${queue.size} 首）", onClose = onClose) {
+    OverlayPanel(compact = compact, title = "播放队列（${queue.size} 首）", onClose = onClose) {
         if (queue.isEmpty()) {
             EmptyState(
                 title = "播放队列是空的",
@@ -583,8 +714,9 @@ fun VolumePanel(
     volume: Float,
     onVolume: (Float) -> Unit,
     onClose: () -> Unit,
+    compact: Boolean = false,
 ) {
-    OverlayPanel(title = "音量", onClose = onClose) {
+    OverlayPanel(compact = compact, title = "音量", onClose = onClose) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.VolumeUp, contentDescription = null)
@@ -610,8 +742,9 @@ fun SleepTimerPanel(
     onStopAfterCurrent: () -> Unit,
     onCancelTimer: () -> Unit,
     onClose: () -> Unit,
+    compact: Boolean = false,
 ) {
-    OverlayPanel(title = "睡眠定时器", onClose = onClose) {
+    OverlayPanel(compact = compact, title = "睡眠定时器", onClose = onClose) {
         Column(Modifier.padding(20.dp)) {
             if (remainingSeconds > 0) {
                 Text(
@@ -660,8 +793,9 @@ fun PlaybackEffectsPanel(
     onBand: (Int, Float) -> Unit,
     onReset: () -> Unit,
     onClose: () -> Unit,
+    compact: Boolean = false,
 ) {
-    OverlayPanel(title = "音效与倍速", onClose = onClose) {
+    OverlayPanel(compact = compact, title = "音效与倍速", onClose = onClose) {
         Column(
             Modifier
                 .fillMaxSize()

@@ -85,6 +85,7 @@ fun NowPlayingScreen(
     showMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
     externalOverlay: String? = null,
+    panelRequest: Pair<String, Long>? = null,
 ) {
     val song by container.player.currentSong.collectAsState()
     val state by container.player.state.collectAsState()
@@ -115,8 +116,8 @@ fun NowPlayingScreen(
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var showFullLyrics by remember { mutableStateOf(false) }
 
-    LaunchedEffect(externalOverlay) {
-        when (externalOverlay) {
+    fun applyOverlay(name: String?) {
+        when (name) {
             "queue" -> showQueue = true
             "volume" -> showVolume = true
             "sleep" -> showSleepTimer = true
@@ -136,6 +137,12 @@ fun NowPlayingScreen(
             }
             null -> Unit
         }
+    }
+
+    LaunchedEffect(externalOverlay) { applyOverlay(externalOverlay) }
+    // 迷你播放条的功能按钮：panelRequest 带序号，重复点同一面板也能重新展开
+    LaunchedEffect(panelRequest) {
+        if (panelRequest != null) applyOverlay(panelRequest.first)
     }
 
     val lyricIndex = remember(lyrics, position) { currentLyricIndex(lyrics.lines, position) }
