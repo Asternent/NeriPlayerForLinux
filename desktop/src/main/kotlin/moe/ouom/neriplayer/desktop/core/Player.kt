@@ -257,7 +257,12 @@ class PlayerManager(
             }
             return
         }
-        if (_state.value == PlaybackState.ERROR || engine.snapshot.value.error != null) {
+        // 恢复上次队列时只还原了歌曲信息、没有真正 open 音频源（currentPlayingKey 仍为 null），
+        // 此时直接 engine.play() 不会出声。必须重新走 playCurrent 解析音源并 open。
+        if (currentPlayingKey != _currentSong.value?.key ||
+            _state.value == PlaybackState.ERROR ||
+            engine.snapshot.value.error != null
+        ) {
             playCurrent()
             return
         }

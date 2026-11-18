@@ -251,6 +251,7 @@ private fun AppScaffold(container: AppContainer) {
                         onToggle = { container.player.togglePlayPause() },
                         onNext = { container.player.next() },
                         onPrevious = { container.player.previous() },
+                        onSeek = { container.player.seekTo(it) },
                         onOpen = { navigate(Screen.NowPlaying) },
                     )
                     NeriBottomBar(

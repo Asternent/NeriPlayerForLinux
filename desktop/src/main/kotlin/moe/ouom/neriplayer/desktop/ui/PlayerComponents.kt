@@ -3,6 +3,11 @@ package moe.ouom.neriplayer.desktop.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,10 +20,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -64,6 +71,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -126,6 +137,7 @@ fun MiniPlayer(
     onToggle: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
+    onSeek: (Long) -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -140,6 +152,7 @@ fun MiniPlayer(
             onToggle = onToggle,
             onNext = onNext,
             onPrevious = onPrevious,
+            onSeek = onSeek,
             onOpen = onOpen,
         )
     }
@@ -154,6 +167,7 @@ private fun MiniPlayerCard(
     onToggle: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
+    onSeek: (Long) -> Unit,
     onOpen: () -> Unit,
 ) {
     val widthModifier = if (isWideAppLayout) {
@@ -161,16 +175,78 @@ private fun MiniPlayerCard(
     } else {
         Modifier.widthIn(max = AppContentMaxWidth).fillMaxWidth()
     }
+    // 卡片的 hover 只负责背景高亮；进度条单独一个 hover 源，避免整栏悬停时进度条一起变大
+    val cardInteraction = remember { MutableInteractionSource() }
+    val cardHovered by cardInteraction.collectIsHoveredAsState()
+    val progressInteraction = remember { MutableInteractionSource() }
+    val progressHovered by progressInteraction.collectIsHoveredAsState()
+    val safeDuration = durationMs.coerceAtLeast(1L)
+    var dragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(0f) }
+    val progress = if (dragging) dragValue else (positionMs.toFloat() / safeDuration).coerceIn(0f, 1f)
+
     Surface(
         modifier = widthModifier
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .hoverable(cardInteraction)
+            // 整条控制栏都可点击进入播放页；进度条与按钮各自消费点击，不会冒泡到这里
+            .clickable(onClick = onOpen, interactionSource = cardInteraction, indication = null),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (cardHovered) {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
         tonalElevation = 2.dp,
     ) {
-        Column(Modifier.clickable(onClick = onOpen)) {
+        // Box 根容器：进度条绝对定位贴顶、不占布局高度；歌曲信息行在整张卡片里垂直居中，
+        // 避免进度条容器的高度把信息挤得偏下。
+        Box(Modifier.heightIn(min = 58.dp)) {
+            val barTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            val barActiveColor = MaterialTheme.colorScheme.primary
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .height(8.dp)
+                    .hoverable(progressInteraction)
+                    .clip(RoundedCornerShape(2.dp))
+                    .drawBehind {
+                        val barH = if (progressHovered || dragging) 8.dp.toPx() else 2.dp.toPx()
+                        drawRoundRect(
+                            color = barTrackColor,
+                            size = Size(size.width, barH),
+                            topLeft = Offset.Zero,
+                            cornerRadius = CornerRadius(barH / 2),
+                        )
+                        drawRoundRect(
+                            color = barActiveColor,
+                            size = Size(size.width * progress, barH),
+                            topLeft = Offset.Zero,
+                            cornerRadius = CornerRadius(barH / 2),
+                        )
+                    }
+                    .pointerInput(safeDuration) {
+                        fun seekAt(x: Float) {
+                            dragValue = (x / size.width).coerceIn(0f, 1f)
+                        }
+                        detectDragGestures(
+                            onDragStart = { seekAt(it.x) },
+                            onDrag = { change, _ -> change.consume(); seekAt(change.position.x) },
+                            onDragEnd = {
+                                dragging = false
+                                onSeek((dragValue * safeDuration).toLong())
+                            },
+                            onDragCancel = { dragging = false },
+                        )
+                    },
+            )
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .matchParentSize()
+                    .wrapContentHeight(Alignment.CenterVertically)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SongArtwork(song, size = 42.dp, shape = RoundedCornerShape(10.dp))
@@ -192,6 +268,7 @@ private fun MiniPlayerCard(
                         modifier = Modifier.basicMarqueeIfLong(),
                     )
                 }
+                Spacer(Modifier.width(8.dp))
                 IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Outlined.SkipPrevious, contentDescription = "上一首", modifier = Modifier.size(22.dp))
                 }
@@ -205,14 +282,6 @@ private fun MiniPlayerCard(
                 IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Outlined.SkipNext, contentDescription = "下一首", modifier = Modifier.size(22.dp))
                 }
-            }
-            if (durationMs > 0L) {
-                LinearProgressIndicator(
-                    progress = { (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
             }
         }
     }
