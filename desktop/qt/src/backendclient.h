@@ -72,4 +72,5 @@ private:
     bool m_connected = false;
     QString m_socketPath;
     qint64 m_backendPid = -1;
+    bool m_triedStart = false;
 };

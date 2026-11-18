@@ -1,5 +1,6 @@
 package moe.ouom.neriplayer.desktop.net
 
+import kotlinx.serialization.Serializable
 import moe.ouom.neriplayer.desktop.core.MediaSource
 import moe.ouom.neriplayer.desktop.core.OnlineArtist
 import moe.ouom.neriplayer.desktop.core.OnlineCollection
@@ -334,6 +335,7 @@ value class JsonObjectSelf(private val raw: kotlinx.serialization.json.JsonObjec
     fun array(key: String) = raw.array(key)
 }
 
+@Serializable
 data class SongUrl(
     val url: String,
     val level: String,

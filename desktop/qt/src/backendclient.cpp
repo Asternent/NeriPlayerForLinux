@@ -86,6 +86,11 @@ void BackendClient::connectToBackend()
 {
     if (m_socket->state() != QLocalSocket::UnconnectedState)
         return;
+    // socket 不存在说明后端没在跑：按 NERIPLAYER_BACKEND_JAR 拉起一个（打包后的默认行为）
+    if (!m_triedStart && !QFileInfo::exists(m_socketPath)) {
+        m_triedStart = true;
+        tryStartBackend();
+    }
     m_socket->connectToServer(m_socketPath);
 }
 

@@ -1,5 +1,6 @@
 package moe.ouom.neriplayer.desktop.core
 
+import kotlinx.serialization.Serializable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,7 @@ private val AUDIO_EXTENSIONS = setOf(
 fun isSupportedAudioFile(file: File): Boolean =
     file.isFile && file.extension.lowercase(Locale.ROOT) in AUDIO_EXTENSIONS
 
+@Serializable
 data class ScanState(
     val running: Boolean = false,
     val total: Int = 0,

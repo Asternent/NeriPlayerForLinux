@@ -29,6 +29,11 @@ Item {
         }
     }
 
+    // 播放页/迷你播放条触发的浮层面板（队列、音量、睡眠定时器、音效、下载管理…）
+    PlayerOverlays {
+        anchors.fill: parent
+    }
+
     Item {
         id: bottomBar
         anchors.left: parent.left

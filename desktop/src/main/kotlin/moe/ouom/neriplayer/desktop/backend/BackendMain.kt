@@ -3,7 +3,14 @@ package moe.ouom.neriplayer.desktop.backend
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.awaitCancellation
 import moe.ouom.neriplayer.desktop.backend.api.AppApi
+import moe.ouom.neriplayer.desktop.backend.api.ArtworkApi
+import moe.ouom.neriplayer.desktop.backend.api.CollectionsApi
+import moe.ouom.neriplayer.desktop.backend.api.DownloadApi
+import moe.ouom.neriplayer.desktop.backend.api.LibraryApi
+import moe.ouom.neriplayer.desktop.backend.api.LoginApi
+import moe.ouom.neriplayer.desktop.backend.api.OnlineApi
 import moe.ouom.neriplayer.desktop.backend.api.PlayerApi
+import moe.ouom.neriplayer.desktop.backend.api.SyncApi
 import moe.ouom.neriplayer.desktop.core.AppContainer
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
@@ -33,6 +40,13 @@ fun main(args: Array<String>) {
     val server = CoreServer(socketPath)
     AppApi.register(server, container)
     PlayerApi.register(server, container)
+    LibraryApi.register(server, container)
+    CollectionsApi.register(server, container)
+    OnlineApi.register(server, container)
+    LoginApi.register(server, container)
+    DownloadApi.register(server, container)
+    SyncApi.register(server, container)
+    ArtworkApi.register(server, container)
     val publisher = StatePublisher(server, container)
 
     // 先装好命令与事件，再启动核心（bootstrap 期间产生的状态会由 StatePublisher 推出去）

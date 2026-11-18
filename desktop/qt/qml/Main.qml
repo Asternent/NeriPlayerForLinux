@@ -18,7 +18,11 @@ ApplicationWindow {
            : "音理音理!! · NeriPlayer"
 
     /** 供快捷键 / 截图脚本 / 托盘调用的命名路由入口。 */
-    function openPageByName(name, arg) {
+    function openPageByName(name) {
+        Nav.openByName(name)
+    }
+
+    function openPage(name, arg) {
         Nav.openByName(name, arg)
     }
 

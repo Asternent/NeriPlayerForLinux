@@ -1,19 +1,25 @@
 package moe.ouom.neriplayer.desktop.net
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import moe.ouom.neriplayer.desktop.core.AccountInfo
 import moe.ouom.neriplayer.desktop.core.MediaSource
 import moe.ouom.neriplayer.desktop.core.displayName
 
+@Serializable
 sealed interface LoginPollResult {
     /** 二维码过期，需要重新获取 */
+    @Serializable
     data object Expired : LoginPollResult
 
     /** 等待扫码；scanned=true 表示已扫码、等待手机确认 */
+    @Serializable
     data class Waiting(val scanned: Boolean) : LoginPollResult
 
+    @Serializable
     data class Success(val account: AccountInfo) : LoginPollResult
 
+    @Serializable
     data class Failed(val message: String) : LoginPollResult
 }
 

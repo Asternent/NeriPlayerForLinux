@@ -1,5 +1,6 @@
 package moe.ouom.neriplayer.desktop.net
 
+import kotlinx.serialization.Serializable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.ouom.neriplayer.desktop.core.AudioInput
@@ -9,6 +10,7 @@ import moe.ouom.neriplayer.desktop.core.SearchKind
 import moe.ouom.neriplayer.desktop.core.SearchPayload
 import moe.ouom.neriplayer.desktop.core.Song
 
+@Serializable
 data class NeteaseHomeData(
     val recommendedSongs: List<Song> = emptyList(),
     val topSongs: List<Song> = emptyList(),
