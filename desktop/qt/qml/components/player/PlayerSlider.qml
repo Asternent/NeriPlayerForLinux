@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import "../"
 
 // 带 M3 配色的滑杆。父级把 value 绑定到数据源，并在 moved 里写回数据源即可。
 Item {

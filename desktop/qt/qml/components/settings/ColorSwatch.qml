@@ -1,5 +1,4 @@
 import QtQuick
-import "../"
 
 // 圆形色块（预设主题色 / 悬浮歌词配色）。
 Item {

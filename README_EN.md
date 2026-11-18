@@ -1,5 +1,23 @@
 [English](./README_EN.md) | [中文](./README.md)
 
+
+> [!IMPORTANT]
+> ### 🐧 This repository is a fork: it adds a native Linux desktop version (Qt6/QML)
+>
+> Built on top of [cwuom/NeriPlayer](https://github.com/cwuom/NeriPlayer) (a native Android app), this fork adds a
+> Linux desktop application that **does not require Android runtime or a browser engine**:
+> **Qt 6 / QML frontend + Kotlin headless backend over a local Unix-socket JSON protocol**, shipped as a single
+> `.deb` with a slim bundled JRE. Fast startup, low memory, and it follows the desktop's dark/light mode and accent color.
+>
+> - 📖 Desktop docs: [`desktop/README.md`](./desktop/README.md)
+> - ⬇️ Download: [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) → `neriplayer_<version>_amd64.deb`
+> - 🔄 Shares the same GitHub sync format with the Android app (playlists / favorites / recents / play stats)
+> - 🔑 QR login for NetEase & Bilibili, local library, lyrics (including floating lyrics), multi-source playback
+> - 🖥️ Background residency: tray (StatusNotifierItem) + control panel + MPRIS media keys + xdg global shortcuts
+> - 🎨 Material 3 UI whose colors follow KDE/GNOME system theme by default
+>
+> Desktop sources live in [`desktop/`](./desktop) and do not overlap with the upstream Android project.
+> The content below is the original Android README, kept as-is.
 <h1 align="center">NeriPlayer</h1>
 
 <div align="center">

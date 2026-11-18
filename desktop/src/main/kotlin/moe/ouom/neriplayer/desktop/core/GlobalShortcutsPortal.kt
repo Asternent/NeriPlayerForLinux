@@ -51,10 +51,10 @@ class GlobalShortcutsPortal(
         }
     }
 
-    /** 把 Compose 绑定转成 xdg shortcuts spec 的触发器字符串。 */
+    /** 把绑定转成 xdg shortcuts spec 的触发器字符串，例如 "CTRL+ALT+l"。 */
     private fun triggerOf(binding: ShortcutBinding): String? {
         if (!binding.isBound) return null
-        val key = xdgKeyName(binding.normalizedKeyCode) ?: return null
+        val key = xdgKeyName(binding.key) ?: return null
         val mods = buildList {
             if (binding.ctrl) add("CTRL")
             if (binding.alt) add("ALT")
@@ -259,30 +259,16 @@ class GlobalShortcutsPortal(
 
         /** Compose keyCode 转 xdg shortcuts spec 的键名；无法表示时返回 null。
          * 入参做低 32 位归一化，与 Compose Key 的 (keyLocation<<32)|keyCode 打包格式对齐。 */
-        private fun xdgKeyName(rawKeyCode: Long): String? {
-            val keyCode = rawKeyCode and 0xFFFFFFFFL
-            val key = androidx.compose.ui.input.key.Key
-            return when (keyCode) {
-                key.Spacebar.keyCode and 0xFFFFFFFFL -> "space"
-                key.Enter.keyCode and 0xFFFFFFFFL -> "Return"
-                key.Escape.keyCode and 0xFFFFFFFFL -> "Escape"
-                key.Tab.keyCode and 0xFFFFFFFFL -> "Tab"
-                key.DirectionUp.keyCode and 0xFFFFFFFFL -> "Up"
-                key.DirectionDown.keyCode and 0xFFFFFFFFL -> "Down"
-                key.DirectionLeft.keyCode and 0xFFFFFFFFL -> "Left"
-                key.DirectionRight.keyCode and 0xFFFFFFFFL -> "Right"
-                key.MediaPlayPause.keyCode and 0xFFFFFFFFL -> "XF86AudioPlay"
-                key.MediaNext.keyCode and 0xFFFFFFFFL -> "XF86AudioNext"
-                key.MediaPrevious.keyCode and 0xFFFFFFFFL -> "XF86AudioPrev"
-                key.MediaStop.keyCode and 0xFFFFFFFFL -> "XF86AudioStop"
-                else -> {
-                    val text = runCatching { androidx.compose.ui.input.key.Key(keyCode).toString() }.getOrNull().orEmpty()
-                    when {
-                        text.startsWith("Key: ") && text.length > 5 -> text.substring(5).uppercase()
-                        text.isEmpty() -> null
-                        else -> null
-                    }
-                }
+        /** xkb 键名 → portal 接受的触发器键名（单字母统一大写，其余按 xkb 名称）。 */
+        private fun xdgKeyName(key: String): String? {
+            if (key.isBlank()) return null
+            return when (key) {
+                "space" -> "space"
+                "Escape" -> "Escape"
+                "Return" -> "Return"
+                "Tab" -> "Tab"
+                "Up", "Down", "Left", "Right" -> key
+                else -> if (key.length == 1) key.uppercase() else key
             }
         }
     }

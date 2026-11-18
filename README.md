@@ -1,19 +1,21 @@
 [English](./README_EN.md) | [中文](./README.md)
 
 > [!IMPORTANT]
-> ### 🐧 本仓库是 fork：新增了 Linux 原生桌面版
+> ### 🐧 本仓库是 fork：新增了 Linux 原生桌面版（Qt6/QML）
 >
 > 在 [cwuom/NeriPlayer](https://github.com/cwuom/NeriPlayer)（原生 Android 应用）的基础上，本 fork 新增了
-> **不依赖 Android 运行环境**的 Compose Desktop 版本，可直接在 Linux 桌面安装使用：
-> Kotlin + Compose Desktop（JVM / Skia），打包为单个 `.deb`，界面与核心功能按原应用复刻。
+> **不依赖 Android 运行环境、也不依赖浏览器内核**的 Linux 原生桌面版：
+> **Qt 6 / QML 前端 + Kotlin 无头后端（本地 Unix socket IPC）**，打包为单个 `.deb`，
+> 启动快、占用低，主题与深浅色跟随桌面环境。
 >
 > - 📖 桌面版文档：[`desktop/README.md`](./desktop/README.md)
-> - ⬇️ 下载安装：[Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) → `neriplayer_<版本>-1_amd64.deb`
+> - ⬇️ 下载安装：[Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) → `neriplayer_<版本>_amd64.deb`
 > - 🔄 与原应用**共用同一套 GitHub 同步协议**，歌单 / 收藏 / 最近播放 / 播放统计可双向同步
 > - 🔑 支持网易云与哔哩哔哩应用内扫码登录、本地媒体库、歌词（含悬浮歌词）、多源在线播放
-> - 🖥️ 后台常驻：系统托盘 + 应用主题风格的控制面板（封面 / 进度 / 传输控制 / 音量）+ MPRIS 系统媒体控制
+> - 🖥️ 后台常驻：系统托盘（StatusNotifierItem）+ 控制面板 + MPRIS 媒体键 + xdg 全局快捷键
+> - 🎨 Material 3 界面，但深浅色与强调色默认取自 KDE/GNOME 系统设置
 >
-> 桌面版源码位于 [`desktop/`](./desktop) 目录，不影响原有 Android 工程。
+> 桌面版源码位于 [`desktop/`](./desktop) 目录，与上游 Android 工程零重叠，不影响原有工程。
 > 下方内容为原 Android 项目的 README，保持原样。
 
 ---

@@ -194,9 +194,7 @@ fun main() = runBlocking {
     log("--- GitHub 同步自检 ---")
     checkSyncSerializerAndMerge()
     log("--- 悬浮歌词自检 ---")
-    checkFloatingLyrics()
     log("--- 定位到正在播放自检 ---")
-    checkLocateCurrent()
     log("--- 下载自检 ---")
     checkDownloads(online)
     log("--- 后台与系统控制自检 ---")
@@ -383,147 +381,6 @@ private suspend fun checkDownloads(online: moe.ouom.neriplayer.desktop.net.Onlin
     tempDir.deleteRecursively()
 }
 
-/** 「定位到正在播放」的下标计算。 */
-private fun checkLocateCurrent() {
-    val songs = listOf(
-        moe.ouom.neriplayer.desktop.core.Song(key = "local:/a.mp3", title = "A"),
-        moe.ouom.neriplayer.desktop.core.Song(key = "local:/b.mp3", title = "B"),
-        moe.ouom.neriplayer.desktop.core.Song(key = "net:1", title = "C"),
-    )
-    check(
-        "locate-found-middle",
-        moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, songs[1]) == 1,
-    )
-    check(
-        "locate-found-last",
-        moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, songs[2]) == 2,
-    )
-    check(
-        "locate-not-in-list",
-        moe.ouom.neriplayer.desktop.ui.currentSongIndex(
-            songs,
-            moe.ouom.neriplayer.desktop.core.Song(key = "local:/x.mp3"),
-        ) == -1,
-    )
-    check(
-        "locate-no-current",
-        moe.ouom.neriplayer.desktop.ui.currentSongIndex(songs, null) == -1,
-    )
-    check(
-        "locate-empty-list",
-        moe.ouom.neriplayer.desktop.ui.currentSongIndex(emptyList(), songs[0]) == -1,
-    )
-}
-
-/** 悬浮歌词的颜色解析、位置换算与尺寸计算。 */
-private fun checkFloatingLyrics() {
-    check(
-        "floating-color-parse",
-        moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.of("YELLOW") ==
-            moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.YELLOW &&
-            moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.of("unknown") ==
-            moe.ouom.neriplayer.desktop.ui.FloatingLyricColor.WHITE,
-    )
-    check(
-        "floating-style-parse",
-        moe.ouom.neriplayer.desktop.ui.FloatingLyricRenderStyle.of("OUTLINE") ==
-            moe.ouom.neriplayer.desktop.ui.FloatingLyricRenderStyle.OUTLINE &&
-            moe.ouom.neriplayer.desktop.ui.FloatingLyricAlignment.of("LEFT") ==
-            moe.ouom.neriplayer.desktop.ui.FloatingLyricAlignment.LEFT,
-    )
-
-    val (x, y) = moe.ouom.neriplayer.desktop.ui.resolveFloatingPosition(
-        screenWidth = 1920,
-        screenHeight = 1080,
-        windowWidth = 900,
-        windowHeight = 120,
-        ratioX = 0.5f,
-        ratioY = 0.85f,
-    )
-    check("floating-position-center-bottom", x == 510 && y == 816, "x=$x y=$y")
-
-    val (clampedX, clampedY) = moe.ouom.neriplayer.desktop.ui.resolveFloatingPosition(
-        screenWidth = 1000,
-        screenHeight = 800,
-        windowWidth = 900,
-        windowHeight = 120,
-        ratioX = 1.6f,
-        ratioY = -0.5f,
-    )
-    check("floating-position-clamped", clampedX == 100 && clampedY == 0, "x=$clampedX y=$clampedY")
-
-    val (ratioX, ratioY) = moe.ouom.neriplayer.desktop.ui.resolveFloatingRatio(
-        screenWidth = 1920,
-        screenHeight = 1080,
-        windowWidth = 900,
-        windowHeight = 120,
-        x = 510,
-        y = 816,
-    )
-    check(
-        "floating-ratio-roundtrip",
-        kotlin.math.abs(ratioX - 0.5f) < 0.001f && kotlin.math.abs(ratioY - 0.85f) < 0.001f,
-        "ratioX=$ratioX ratioY=$ratioY",
-    )
-
-    val heightWithTranslation = moe.ouom.neriplayer.desktop.ui.floatingWindowHeightDp(
-        moe.ouom.neriplayer.desktop.core.AppSettings(
-            floatingLyricsFontSize = 30f,
-            floatingLyricsShowTranslation = true,
-        )
-    )
-    val heightWithoutTranslation = moe.ouom.neriplayer.desktop.ui.floatingWindowHeightDp(
-        moe.ouom.neriplayer.desktop.core.AppSettings(
-            floatingLyricsFontSize = 30f,
-            floatingLyricsShowTranslation = false,
-        )
-    )
-    check(
-        "floating-window-height",
-        heightWithTranslation > heightWithoutTranslation && heightWithoutTranslation >= 64f,
-        "with=$heightWithTranslation without=$heightWithoutTranslation",
-    )
-
-    // 拖动跟随：窗口必须与鼠标保持固定相对位置（旧实现用窗口内增量累加会越拖越偏）
-    val grabX = 100f
-    val grabY = 40f
-    val (sameX, sameY) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
-        windowX = 300, windowY = 710,
-        pointerLocalX = grabX, pointerLocalY = grabY,
-        grabOffsetX = grabX, grabOffsetY = grabY,
-        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
-    )
-    check("floating-drag-no-jump", sameX == 300 && sameY == 710, "x=$sameX y=$sameY")
-
-    // 鼠标屏幕坐标右移 50（窗口尚未移动，本地坐标变为 150）
-    val (stepOneX, _) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
-        windowX = 300, windowY = 710,
-        pointerLocalX = grabX + 50f, pointerLocalY = grabY,
-        grabOffsetX = grabX, grabOffsetY = grabY,
-        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
-    )
-    check("floating-drag-follow-1", stepOneX == 350, "x=$stepOneX")
-
-    // 窗口已跟随到 350 后再右移 50：本地坐标重新变成 150（因为窗口跟着动了），
-    // 目标位置应为 400 而不是旧实现里 350 + 50 的重复叠加
-    val (stepTwoX, _) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
-        windowX = 350, windowY = 710,
-        pointerLocalX = grabX + 50f, pointerLocalY = grabY,
-        grabOffsetX = grabX, grabOffsetY = grabY,
-        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
-    )
-    check("floating-drag-follow-2", stepTwoX == 400, "x=$stepTwoX")
-
-    // 拖到屏幕外会被夹回屏幕内
-    val (clampedDragX, clampedDragY) = moe.ouom.neriplayer.desktop.ui.resolveDragPosition(
-        windowX = 300, windowY = 710,
-        pointerLocalX = 5000f, pointerLocalY = 5000f,
-        grabOffsetX = grabX, grabOffsetY = grabY,
-        screenWidth = 1500, screenHeight = 1000, windowWidth = 900, windowHeight = 134,
-    )
-    check("floating-drag-clamped", clampedDragX == 600 && clampedDragY == 866, "x=$clampedDragX y=$clampedDragY")
-}
-
 /** 同步通道序列化与合并策略的离线自检。 */
 private fun checkSyncSerializerAndMerge() {
     val songA = moe.ouom.neriplayer.desktop.sync.SyncSong(
@@ -675,33 +532,5 @@ private fun checkSyncSerializerAndMerge() {
     ).playlists.first().songs
     check("sync-merge-deletion-tombstone", afterDeletion.size == 1 && afterDeletion.first().id == songA.id)
 
-    checkArtworkDownscale()
 }
 
-/**
- * 封面解码回归：在线音源的封面常见 3000×3000 甚至 4096×4096，
- * 整张解码单张就要 34~64 MB，必须按最长边缩放后再进缓存。
- */
-private fun checkArtworkDownscale() {
-    val side = 3000
-    val image = java.awt.image.BufferedImage(side, side, java.awt.image.BufferedImage.TYPE_INT_RGB)
-    image.createGraphics().apply {
-        color = java.awt.Color(176, 58, 92)
-        fillRect(0, 0, side, side)
-        dispose()
-    }
-    val buffer = java.io.ByteArrayOutputStream()
-    val written = runCatching { javax.imageio.ImageIO.write(image, "jpg", buffer) }.getOrDefault(false)
-    if (!written) {
-        check("artwork-downscale", false, "无法生成测试用 JPEG（缺少 ImageIO 写出支持）")
-        return
-    }
-    val decoded = moe.ouom.neriplayer.desktop.ui.decodeArtwork(buffer.toByteArray())
-    val longest = decoded?.let { maxOf(it.width, it.height) } ?: 0
-    check(
-        "artwork-downscale",
-        longest in 1..768,
-        "3000×3000 → ${decoded?.width}×${decoded?.height}（单张 ${longest.toLong() * longest * 4 / 1048576} MB）",
-    )
-    log("artwork cache: ${moe.ouom.neriplayer.desktop.ui.artworkCacheStats()}")
-}

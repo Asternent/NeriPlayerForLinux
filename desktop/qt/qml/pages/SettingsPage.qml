@@ -688,6 +688,17 @@ Item {
 
                 Item {
                     width: 1
+                    height: 6
+                }
+
+                SettingsNote {
+                    width: parent.width
+                    visible: page.sb("followSystemTheme", true)
+                    text: "「跟随系统主题色」已开启，预设与自定义主题色暂时不可选；关闭该开关后即可手动指定。"
+                }
+
+                Item {
+                    width: 1
                     height: 10
                 }
 

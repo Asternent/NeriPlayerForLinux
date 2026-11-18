@@ -5,22 +5,22 @@ import QtQuick
 Item {
     id: card
 
-    property var data: null
+    property var entry: null
 
-    property string title: data && data.name !== undefined ? data.name : ""
+    property string title: entry && entry.name !== undefined ? entry.name : ""
     property string subtitle: {
-        if (!data)
+        if (!entry)
             return ""
-        if (data.trackCount !== undefined && data.trackCount > 0)
-            return data.trackCount + " 首"
-        if (data.songs !== undefined && data.songs !== null)
-            return data.songs.length + " 首"
-        if (data.creator !== undefined && data.creator !== "")
-            return data.creator
+        if (entry.trackCount !== undefined && entry.trackCount > 0)
+            return entry.trackCount + " 首"
+        if (entry.songs !== undefined && entry.songs !== null)
+            return entry.songs.length + " 首"
+        if (entry.creator !== undefined && entry.creator !== "")
+            return entry.creator
         return ""
     }
-    property string coverUrl: data && data.coverUrl !== undefined && data.coverUrl !== null ? data.coverUrl : ""
-    property string localCoverPath: data && data.artworkPath !== undefined && data.artworkPath !== null ? data.artworkPath : ""
+    property string coverUrl: entry && entry.coverUrl !== undefined && entry.coverUrl !== null ? entry.coverUrl : ""
+    property string localCoverPath: entry && entry.artworkPath !== undefined && entry.artworkPath !== null ? entry.artworkPath : ""
     property real cardWidth: 150
 
     signal clicked()

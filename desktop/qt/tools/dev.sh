@@ -106,8 +106,9 @@ cmd_screenshot() {
     if [ ! -x "$BIN" ]; then
         cmd_build
     fi
-    QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
-        timeout 90 "$BIN" --qml-dir "$QT_DIR/qml" --screenshot "$out" "$@"
+    # 用 RHI/OpenGL 离屏渲染：软件后端不支持 MultiEffect 遮罩等 shader 效果，圆角封面会缺失
+    QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl \
+        timeout 120 "$BIN" --qml-dir "$QT_DIR/qml" --screenshot "$out" "$@"
     echo "screenshot: $out"
 }
 

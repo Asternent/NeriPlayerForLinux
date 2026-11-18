@@ -15,6 +15,11 @@ QString runtimeDir()
     return dir.isEmpty() ? QDir::tempPath() : dir;
 }
 
+QString socketPath()
+{
+    return runtimeDir() + QStringLiteral("/neriplayer-qt-%1.sock").arg(QString::number(::getuid()));
+}
+
 } // namespace
 
 SingleInstance::SingleInstance(QObject *parent)
@@ -32,7 +37,7 @@ SingleInstance::~SingleInstance()
 
 QString SingleInstance::socketName()
 {
-    return QStringLiteral("neriplayer-qt-%1.sock").arg(QString::number(::getuid()));
+    return socketPath();
 }
 
 bool SingleInstance::acquire()

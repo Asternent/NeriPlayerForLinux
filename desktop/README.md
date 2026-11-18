@@ -1,257 +1,144 @@
-# NeriPlayer Desktop · 音理音理（Linux 原生版）
+# NeriPlayer Desktop · 音理音理（Linux 原生 Qt 版）
 
-把 Android 应用 [NeriPlayer](https://github.com/cwuom/NeriPlayer) 重写为**不依赖 Android 运行环境**的 Linux 原生桌面应用。
-技术栈是 Kotlin + Compose Desktop（JVM / Skia 渲染），打包为单个 `.deb`，安装即用。
+把 Android 应用 [NeriPlayer](https://github.com/cwuom/NeriPlayer) 移植为**不依赖 Android / 浏览器内核**的
+Linux 原生桌面音乐播放器。
+
+- **前端**：Qt 6 / QML（Qt Quick + 自绘 Material 3 风格组件），原生窗口、动画、托盘与系统集成；
+- **后端**：Kotlin 无头服务进程（媒体库、音频引擎、在线音源、下载、GitHub 同步、MPRIS、托盘、全局快捷键），
+  与前端通过 **Unix domain socket 上的 JSON 协议**通信（见 [`docs/protocol.md`](./docs/protocol.md)）。
+  前端进程不依赖 JVM 图形栈，内存与启动开销比 Compose Desktop 版低得多；
+- **主题跟随系统**：深浅色与强调色取自桌面环境（KDE/GNOME），再用 Material Color Utilities 生成整套 M3 色板；
+- **打包**：单个 `.deb`，内置 jlink 精简 JRE（用户无需安装 JDK），约 42 MB。
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="46%" alt="首页" />
-  <img src="docs/screenshots/nowplaying.png" width="46%" alt="播放页" />
+  <img src="docs/screenshots-qt/home.png" width="46%" alt="首页" />
+  <img src="docs/screenshots-qt/nowplaying.png" width="46%" alt="播放页" />
 </p>
-
-## 下载与安装
-
-从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的 `neriplayer_<版本>-1_amd64.deb`：
-
-```bash
-sudo dpkg -i neriplayer_1.4.7-1_amd64.deb
-neriplayer          # 或从应用菜单启动「NeriPlayer」
-```
-
-- 安装包内置 jlink 运行时，终端用户**不需要**安装 JDK。
-- **高分屏（HiDPI）**：默认跟随桌面缩放（GNOME 的 200% 这类），也可以在「设置 → 界面 → 界面缩放」里
-  手动选择 100% ~ 250%；`NERIPLAYER_UI_SCALE=1.5 neriplayer` 可临时指定。
-- **横屏 / 宽窗口**：窗口内容宽度到 900 dp 就切换成横屏排版（设置两栏、首页卡片并排、歌词限宽居中），
-  窗口拖窄会自动回到单栏的紧凑排版。
-- **建议安装 `ffmpeg`**：用于解码 m4a / aac / opus 等格式，并提供倍速、变调、响度增强与十段均衡器；
-  缺少时自动降级到 Java Sound 引擎（mp3 / flac / ogg / wav / aiff 仍可播放）。
-- 首次启动显示使用须知，随后在「设置 → 媒体库」添加音乐文件夹并扫描即可建立本地曲库。
 
 ## 界面预览
 
 | | |
 | --- | --- |
-| 首页：继续播放 / 推荐 / 热歌榜 <br> ![首页](docs/screenshots/home.png) | 探索：多源搜索与风格标签 <br> ![探索](docs/screenshots/explore.png) |
-| 媒体库：本地 / 收藏 / 在线音源 <br> ![媒体库](docs/screenshots/library.png) | 播放页：封面、进度、音效与队列 <br> ![播放页](docs/screenshots/nowplaying.png) |
-| 歌词页：逐行高亮与翻译 <br> ![歌词](docs/screenshots/lyrics.png) | 播放队列：排序 / 移除 / 跳转 <br> ![队列](docs/screenshots/queue.png) |
-| 悬浮歌词（描边样式，可拖动定位） <br> ![悬浮歌词](docs/screenshots/floating-lyrics.png) | 哔哩哔哩收藏夹 <br> ![B站收藏夹](docs/screenshots/bilibili-favorites.png) |
-| 设置 → 账号：网易云 / 哔哩哔哩扫码登录 <br> ![账号](docs/screenshots/settings.png) | 设置 → 同步：GitHub 跨设备同步 <br> ![同步](docs/screenshots/github-sync.png) |
-| 托盘控制面板：封面、进度、传输控制与音量 <br> ![托盘面板](docs/screenshots/tray-panel.png) | 同一面板的深色主题 <br> ![托盘面板深色](docs/screenshots/tray-panel-dark.png) |
-| 横屏 · 首页：推荐与热歌卡片两两并排 <br> ![横屏首页](docs/screenshots/landscape-home.png) | 横屏 · 设置：两栏排版，不用滚很久 <br> ![横屏设置](docs/screenshots/landscape-settings.png) |
-| 横屏 · 播放页：封面与歌词并排 <br> ![横屏播放页](docs/screenshots/landscape-nowplaying.png) | 横屏 · 探索：标签按宽度自动折行铺满 <br> ![横屏探索](docs/screenshots/landscape-explore.png) |
-| 界面缩放：跟随桌面 200% / 手动 100%–250% <br> ![界面缩放](docs/screenshots/ui-scale.png) | 高分屏（桌面 200% 缩放）下的实际渲染 <br> ![HiDPI](docs/screenshots/hidpi-200.png) |
+| 首页：继续播放 / 为你推荐 / 热歌榜 <br> ![首页](docs/screenshots-qt/home.png) | 探索：搜索、热门搜索、风格标签、推荐歌单 <br> ![探索](docs/screenshots-qt/explore.png) |
+| 媒体库：本地 / 收藏 / 在线音源 <br> ![媒体库](docs/screenshots-qt/library.png) | 播放页：封面、进度、歌词侧栏、工具行 <br> ![播放页](docs/screenshots-qt/nowplaying.png) |
+| 播放队列面板 <br> ![队列](docs/screenshots-qt/panel-queue.png) | 音效面板：倍速 / 变调 / 响度 / 十段均衡器 <br> ![音效](docs/screenshots-qt/panel-effects.png) |
+| 音量面板 <br> ![音量](docs/screenshots-qt/panel-volume.png) | 睡眠定时器 <br> ![睡眠](docs/screenshots-qt/panel-sleep.png) |
+| 设置：主题 / 媒体库 / 播放 / 下载 / 悬浮歌词 / 账号 / 同步 / 快捷键 <br> ![设置](docs/screenshots-qt/settings.png) | 窄窗口（单栏）设置页 <br> ![窄窗口](docs/screenshots-qt/settings-narrow.png) |
+| 深色主题（跟随系统强调色） <br> ![深色首页](docs/screenshots-qt/home-dark.png) | 深色播放页 <br> ![深色播放页](docs/screenshots-qt/nowplaying-dark.png) |
+| 悬浮歌词（置顶、可拖动、锁定时鼠标穿透） <br> ![悬浮歌词](docs/screenshots-qt/floating-lyrics.png) | 托盘控制面板 <br> ![托盘面板](docs/screenshots-qt/tray-panel.png) |
+| 扫码登录（网易云 / 哔哩哔哩） <br> ![扫码登录](docs/screenshots-qt/login.png) | 下载管理 <br> ![下载管理](docs/screenshots-qt/downloads.png) |
 
-## 功能清单
+## 下载与安装
+
+从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的
+`neriplayer_<版本>_amd64.deb`：
+
+```bash
+sudo dpkg -i neriplayer_2.0.0_amd64.deb
+neriplayer          # 或从应用菜单启动「NeriPlayer」
+```
+
+- 安装包内置精简 JRE，终端用户**不需要**安装 JDK。
+- 建议安装 `ffmpeg`：用于解码 m4a / aac / opus，并提供倍速、变调、响度增强与十段均衡器；
+  缺少时自动降级到 Java Sound 引擎（mp3 / flac / ogg / wav 仍可播放）。
+- 主题默认跟随系统：深浅色取桌面设置，强调色取 KDE/GNOME 的系统强调色；也可以在设置里手动指定主题色或开启「动态取色（封面）」。
+- 首次启动显示使用须知，随后在「设置 → 媒体库」添加音乐文件夹并扫描即可建立本地曲库。
+
+## 功能
 
 | 功能 | 状态 |
 | --- | --- |
-| 首页（继续播放 / 为你推荐 / 热歌榜 / 推荐新歌 / 私人雷达 / 热门榜单） | ✅ 网易云公开接口 + 本地栏目回退 |
-| 探索（多源搜索、搜索历史、热门搜索、风格标签、推荐歌单） | ✅ 网易云 / 哔哩哔哩 / 本地媒体库 |
-| 媒体库（本地 / 收藏 / 网易云 / 哔哩哔哩 / QQ 音乐） | ✅ 本地歌曲 · 歌手 · 专辑 · 歌单；在线歌单、专辑与收藏夹 |
-| 本地媒体库 | ✅ 文件夹扫描、读取标签与内嵌封面、搜索与排序 |
-| 播放引擎 | ✅ ffmpeg 解码（倍速 / 变调 / 响度 / 十段均衡器）+ Java Sound 回退引擎 |
-| 歌词 | ✅ 本地 `.lrc` → 内嵌标签 → 在线歌词；翻译、逐行高亮、点击跳转、字号调节 |
-| 悬浮歌词 | ✅ 无边框置顶窗口，可拖动定位，样式与手机端一致 |
-| 账号登录 | ✅ 网易云与哔哩哔哩应用内扫码登录 |
+| 首页（继续播放 / 为你推荐 / 热歌榜 / 推荐新歌 / 私人雷达 / 热门榜单） | ✅ 网易云公开接口 + 本地历史回退 |
+| 探索（搜索、搜索历史、热门搜索、风格标签、推荐歌单、标签歌单） | ✅ 网易云 / 哔哩哔哩 |
+| 媒体库（本地歌曲 / 歌手 / 专辑 / 歌单、收藏、搜索与排序） | ✅ 文件夹扫描、读取标签与内嵌封面 |
+| 在线歌单 / 专辑 / 歌手详情 | ✅ 网易云 + 哔哩哔哩（B 站无专辑/标签体系） |
+| 播放引擎 | ✅ ffmpeg 解码（倍速 / 变调 / 响度 / 十段均衡器）+ Java Sound 回退 |
+| 歌词 | ✅ 本地 `.lrc` → 内嵌标签 → 在线歌词；翻译、逐行高亮、点击跳转、字号调节、全屏歌词 |
+| 悬浮歌词 | ✅ 无边框置顶窗口，可拖动定位、锁定鼠标穿透、描边/阴影样式与颜色可调 |
+| 播放队列 / 音量 / 睡眠定时器 / 音效面板 | ✅ 播放页与迷你播放条均可打开 |
+| 账号登录 | ✅ 网易云与哔哩哔哩应用内扫码登录（后端直接生成二维码） |
 | GitHub 同步 | ✅ 歌单 / 收藏 / 最近播放 / 播放统计，与手机端数据互通 |
-| 歌单与收藏 | ✅ 自建歌单、我喜欢的音乐、增删与排序 |
-| 最近播放 / 继续播放 | ✅ 支持移除单条与清空 |
-| 播放统计 | ✅ 日 / 周 / 月 / 年 / 总，按次数、时长、最近排序 |
-| 播放队列 / 睡眠定时器 | ✅ 队列增删排序、倒计时与播完当前停止 |
-| 主题 | ✅ 深浅色、动态取色跟随封面、9 种 Material 调色风格、2021 / 2025 色彩规范 |
+| 歌单与收藏 | ✅ 自建歌单、我喜欢的音乐、增删与排序、收藏到歌单 |
+| 最近播放 / 播放统计 | ✅ 日 / 周 / 月 / 年 / 总，按次数、时长、最近排序 |
+| 下载 | ✅ 单曲 / 批量下载、进度与取消重试、离线播放、下载面板与管理 |
+| 主题 | ✅ 跟随系统（深浅色 + 强调色）、动态取色（封面）、9 种调色风格、2021/2025 色彩规范 |
+| 系统集成 | ✅ 托盘（StatusNotifierItem + DBusMenu）、托盘控制面板、MPRIS 媒体键、全局快捷键（xdg portal）、单实例、关闭到托盘 |
+| 界面缩放 | ✅ 跟随系统 HiDPI；设置里可选 100%–250% 手动档（下次启动生效） |
 | 与手机端同步协议互通 | ✅ 同一仓库、同一文件格式（JSON 与省流二进制） |
-| 定位到正在播放 | ✅ 列表高亮当前歌曲（播放指示器）+ 一键滚动定位并闪烁提示 |
-| 歌曲下载到本地 | ✅ 单曲 / 批量下载、进度与取消重试、离线播放、下载分栏与管理面板 |
-| 后台常驻与系统控制 | ✅ 托盘常驻后台播放 + 桌面原生托盘菜单（StatusNotifierItem + DBusMenu，另有应用内自绘面板）+ 系统媒体控制（MPRIS，媒体键 / 桌面媒体组件 / playerctl） |
-| 界面缩放（HiDPI） | ✅ 跟随桌面缩放（Xft.dpi / GDK_SCALE / sun.java2d.uiScale），或手动 100% ~ 250%（设置 → 界面） |
-| 横屏（宽窗口）自适应 | ✅ 窗口 ≥ 900 dp 自动切多栏：设置两栏、首页卡片并排、歌词限宽居中；窄窗口保持单栏 |
-| 内存占用 | ✅ 封面按需缩放解码（最长边 768 px）+ 64 MB 字节预算缓存；安装版堆上限 512 MB 并定期归还内存 |
+
+尚未迁移的增强项（后续版本）：媒体库「在线音源」子页（在线歌单 / 收藏夹浏览已可从探索与详情页完成）、
+歌单拖拽排序、快捷键录制交互、设置页宽屏双列布局。旧 Compose Desktop 前端已移除，历史版本见 git 记录。
 
 ### 与原 Android 应用的差异
 
-以下能力是 Android 平台专有或依赖系统服务，桌面端不适用或未移植：
-状态栏歌词、桌面小组件、启动器快捷方式、USB DAC 独占、省电保活与 ANR 日志、下载管理、
-一起听（依赖自建服务端）；YouTube Music 需要 Google 账号授权与专用解析，桌面端保留入口与说明。
+状态栏歌词、桌面小组件、启动器快捷方式、USB DAC 独占、省电保活与 ANR 日志、一起听（依赖自建服务端）
+等 Android 平台专有能力不适用；YouTube Music 需要 Google 账号授权与专用解析，桌面端保留配置入口与说明。
 
 ## 快捷键
+
+应用内（窗口有焦点时）：
 
 | 按键 | 作用 |
 | --- | --- |
 | `空格` | 播放 / 暂停 |
-| `←` / `→` | 后退 / 前进 5 秒 |
-| `↑` / `↓` | 音量 +5% / −5% |
-| `Ctrl` + `←` / `→` | 上一首 / 下一首 |
-| `Ctrl` + `L` | 开关悬浮歌词 |
+| `Ctrl+←` / `Ctrl+→` | 后退 / 前进 5 秒 |
+| `Ctrl+↑` / `Ctrl+↓` | 音量 + / − |
+| `Esc` | 关闭浮层 / 返回上一页 |
+| `Ctrl+H` / `Ctrl+N` / `Ctrl+J` / `Ctrl+S` | 首页 / 探索 / 媒体库 / 设置 |
+| `Ctrl+P` | 打开播放页 |
+| `Ctrl+D` | 打开下载管理 |
+| `Ctrl+M` | 打开托盘控制面板 |
+| `Ctrl+L` / `Ctrl+Alt+L` | 开关悬浮歌词 / 固定歌词位置 |
+| `媒体键` | 播放 / 暂停、上一首、下一首（MPRIS，应用在后台也生效） |
 
-## 使用说明
+全局快捷键通过 xdg-desktop-portal 注册（KDE 首次启动会弹出授权/配置窗口），默认建议值：
+`Ctrl+Shift+空格` 播放暂停、`Ctrl+Shift+←/→` 上下首、`Ctrl+Alt+L` 悬浮歌词、`Ctrl+Alt+P` 播放页、
+`Ctrl+Alt+M` 控制面板；可在「设置 → 快捷键」打开系统配置界面修改。
 
-### 横屏 / 宽窗口布局
+## 架构
 
-窗口内容宽度达到 **900 dp** 时自动切换到横屏排版，把横向空间真正用起来；把窗口拖窄回单栏的紧凑排版。
-两种排版共用同一套控件，拖动窗口边缘就能实时切换。
+```
+neriplayer（Qt 进程）
+  ├─ QML 界面：qml/Main.qml、AppShell、pages/、components/
+  ├─ BackendClient：Unix socket 行分隔 JSON 客户端（自动拉起后端、断线重连）
+  └─ 系统主题：读取 Qt 调色板 / 系统强调色，上报给后端算色板
+        │  $XDG_RUNTIME_DIR/neriplayer/core.sock
+        ▼
+neriplayer-core（Kotlin/JVM 无头后端，内置 jlink JRE 启动）
+  ├─ 播放引擎（ffmpeg + Java Sound）、媒体库、在线音源、下载、GitHub 同步
+  ├─ 托盘（StatusNotifierItem）/ MPRIS / 全局快捷键（xdg portal）
+  └─ JSON-RPC 服务：backend/CoreServer + backend/api/*Api.kt
+```
 
-| 页面 | 紧凑（窄窗口） | 横屏（宽窗口 / 最大化） |
-| --- | --- | --- |
-| 设置 | 单列长列表 | 左右两栏（账号 · 主题 / 界面 · 播放） |
-| 首页 | 歌曲卡片单列 | 卡片两两并排 |
-| 探索 | 标签一行 6 个 | 按宽度自动折行铺满，推荐歌单一行放更多 |
-| 播放页 | 封面在上、歌词在下 | 封面与歌词左右并排，封面更大 |
-| 全屏歌词 | 占满窗口 | 正文限宽居中，避免一行横跨整屏难扫读 |
-| 媒体库 / 统计 / 最近播放 / 下载 | 单列列表 | 列表铺满窗口，不再收在中间一条窄列里 |
-
-### 登录网易云与哔哩哔哩
-
-1. 打开「设置 → 账号」；
-2. 点对应平台的 **扫码登录**，用手机 App（网易云「扫一扫」/ 哔哩哔哩「＋ → 扫一扫」）扫码确认；
-3. 登录后媒体库会多出「我的歌单」与「我的收藏夹」，在线播放也会使用账号可用的更高音质。
-
-凭据（Cookie）只保存在本机 `~/.config/NeriPlayer/accounts.json`（权限 600）。不登录也能使用搜索、推荐、歌词与试听音质。
-
-### GitHub 同步
-
-与原 Android 端共用同一套协议：数据写在你自己的 GitHub 仓库根目录，普通通道 `backup.json`、
-省流通道 `backup-raw.bin`（GZIP + Protobuf），两端可互相读写。
-
-1. 在 GitHub 生成带 `repo` 权限的 Token（建议 fine-grained 且只授权给同步仓库），填入并点「验证 Token」；
-2. 点「创建私有仓库」或「选择现有仓库」；
-3. 开启「自动同步」后，歌单 / 收藏 / 最近播放 / 统计变化会在 15 秒内自动同步；也可随时「立即同步」。
-
-合并策略：歌单按修改时间取新、歌曲取并集并尊重删除墓碑；最近播放按歌曲身份去重取最新；
-播放统计按身份 + 日期分桶取 `max`（避免两端重复计数）。提交走 Git 数据接口并带读取时的 HEAD，
-其他设备并发提交会被判定为冲突并自动重试。Token 保存在 `~/.config/NeriPlayer/sync.json`（权限 600）。
-
-### 悬浮歌词
-
-- 开启：设置 → 悬浮歌词，或播放页工具栏按钮，或快捷键 `Ctrl+L`；
-- **鼠标拖动**即可移动，位置按屏幕比例保存，换分辨率或多屏不会跑出屏幕；
-- 鼠标悬停会浮出「上一首 / 播放暂停 / 下一首 / 关闭」；
-- 样式：十种歌词颜色、阴影与描边两种渲染（含颜色、宽度 / 模糊）、字号、
-  主歌词与翻译不透明度、背景颜色与不透明度、最大宽度、对齐方式、显示翻译、切换淡入；
-- 「应用内隐藏」避免遮挡主窗口，「锁定位置」防止误拖动。
-
-> 透明背景需要系统启用窗口合成器（GNOME / KDE / XFCE 默认开启）；未启用时会退化为不透明底色。
-
-### 定位到正在播放
-
-列表里正在播放的歌曲会**高亮显示**，序号位置变成跳动的音量条；顶部「定位」按钮
-（歌单详情、在线歌单 / 收藏夹、媒体库本地列表）与队列面板里的「定位到正在播放」
-会滚动到该行并让它**闪烁提示**；当前歌曲不在该列表时会明确提示「当前歌曲不在该列表中」。
-队列面板打开时自动定位到正在播放，切换歌曲后也会跟随。
-
-### 下载到本地
-
-与原应用一致：把在线歌曲存到本地，离线也能播放。
-
-- 单曲：歌曲「更多」菜单 → 下载到本地；批量：歌单 / 专辑 / 收藏夹详情顶部 → 下载全部
-- 媒体库新增「下载」分栏，列出已下载歌曲（可直接播放、删除文件、打开目录）
-- 下载管理面板：进度条、取消、重试、清空已完成、打开下载目录；媒体库顶栏有下载入口（带进行中数量角标）
-- 已下载歌曲在列表中显示离线标记，播放时**优先使用本地文件**，断网也能放
-- 设置 → 下载：下载目录（可选）、并发数（1–4）、下载音质（标准 / 较高 / 极高 / 无损）、占用统计与失效记录清理
-
-下载完成时会一并写入元数据，与手机端行为一致：
-
-- 把标题 / 艺术家 / 专辑 / 歌词写进音频**内嵌标签**，其它播放器也能看到完整信息
-- 封面**内嵌进音频文件**，同时保存为同名 sidecar 图片（`歌手 - 标题.jpg` / `.png` / `.webp`）
-- 歌词保存为同名 `.lrc`（本地歌词优先级链路可以直接读取，离线也能看歌词）
-- 下载管理面板提供 **「补齐标签」**：为旧版本下载（或缺标签）的文件补写封面与歌曲信息，无需重新下载
-
-### 后台常驻与系统控制
-
-对应手机端的「前台服务 + 通知栏控制」，桌面端用**系统托盘**与**MPRIS**实现：
-
-- **关闭窗口 = 最小化到托盘**（默认开启）：窗口隐藏后音乐继续播放，控制面板可重新打开或退出；
-  最小化窗口同样会收进托盘（可在设置里关掉这两种行为）
-- **托盘菜单（桌面原生渲染）**：注册 **StatusNotifierItem + DBusMenu**（GNOME / KDE / XFCE 等
-  现代桌面都支持）——菜单由桌面自己绘制，点菜单项通过 D-Bus 回调应用，因此**点击一定生效**；
-  菜单包含播放 / 暂停、上一首、下一首、（勾选式）悬浮歌词开关、显示主窗口、下载管理、设置、
-  打开控制面板、退出；菜单文案随播放状态实时刷新（主程序提供菜单内容，由随包的
-  `neriplayer-tray-bridge.py` 用系统 python3 + GIO 负责与桌面交互）。
-  桌面不支持（或系统没有 python3-gi）时回退到 AWT 托盘图标 + 应用内自绘面板。
-- **应用内控制面板**：菜单里点「打开控制面板」可弹出**应用主题风格的自绘面板**——封面、歌曲信息、
-  队列位置、进度条、上一首 / 播放暂停 / 下一首、音量滑杆与各功能入口，跟随深浅色与动态取色主题；
-  面板贴在鼠标附近弹出，鼠标移开、按 `Esc` 或点任意一项都会收起（不依赖窗口焦点）
-- 鼠标悬停托盘图标显示「正在播放：歌曲 - 歌手」
-- **系统媒体控制（MPRIS）**：注册 `org.mpris.MediaPlayer2.neriplayer`，键盘媒体键、GNOME / KDE 媒体组件、
-  `playerctl` 都能直接控制本应用（播放 / 暂停 / 上下曲 / 循环模式 / 随机 / 音量 / 跳转），并读取当前歌曲与封面
-- **歌曲变化通知**：窗口隐藏时发送系统通知（可在设置里关闭）
-- 窗口标题也会跟随显示「▶ 歌曲 - 歌手」，任务栏一眼可见
-
-> 为什么不用 `java.awt.TrayIcon`：GNOME（Ubuntu 默认桌面）里 AWT 图标走 XEmbed 兼容层，
-> 它转发点击的方式和自绘弹窗配合不上，用户会看到「菜单弹出来但点不动 / 干脆没菜单」。
-> 改用桌面原生的 StatusNotifierItem + DBusMenu 后，菜单由桌面渲染、点击通过 D-Bus 回调应用，
-> 不存在这类冲突；应用内面板仍然保留（菜单里的「打开控制面板」），配色与主界面完全一致。
->
-> 为什么菜单交给一个随包的 Python 小进程：JVM 侧 dbus-java 编组「结构体返回值」时会多包一层括号
-> （`GetLayout` 需要 `(u(ia{sv}av))`，它发出 `((u(ia{sv}av)))`），GNOME 会据此认为菜单是空的。
-> 桥接进程用 GIO 实现，编组交给 GLib，没有这个问题；它只通过几个简单类型的方法与主程序通信。
-
-> 需要桌面环境提供托盘面板；极简环境（如裸 Xvfb）没有托盘时会自动退回普通窗口模式，不会崩溃。
-> MPRIS 需要 D-Bus 会话总线（GNOME / KDE / XFCE 默认提供），设置页会显示注册状态。
-
-## 数据目录（XDG）
-
-| 路径 | 内容 |
-| --- | --- |
-| `~/.config/NeriPlayer/settings.json` | 设置、主题、队列与进度快照 |
-| `~/.config/NeriPlayer/accounts.json` | 网易云 / 哔哩哔哩登录凭据（权限 600） |
-| `~/.config/NeriPlayer/sync.json` | GitHub 同步配置与 Token（权限 600） |
-| `~/.local/share/NeriPlayer/library.json` | 本地媒体库索引 |
-| `~/.local/share/NeriPlayer/playlists.json` | 歌单与「我喜欢的音乐」 |
-| `~/.local/share/NeriPlayer/history.json` | 最近播放 |
-| `~/.local/share/NeriPlayer/stats.json` | 播放统计 |
-| `~/.cache/NeriPlayer/artwork`、`covers` | 内嵌封面提取与在线封面缓存 |
+- 数据目录与旧版共用：`~/.local/share/NeriPlayer`、`~/.config/NeriPlayer`、`~/.cache/NeriPlayer`。
+- 协议： [`docs/protocol.md`](./docs/protocol.md) + `docs/protocol-*.md`；
+- 开发指南：[`qt/docs/qt-dev-guide.md`](./qt/docs/qt-dev-guide.md)。
 
 ## 从源码构建
 
-需要 JDK 17+ 与网络（首次构建会下载 Maven 依赖）：
+依赖：JDK 17、Qt 6.5+ 开发包（qt6-base-dev / qt6-declarative-dev / qt6-svg-dev / qt6-wayland-dev）、
+cmake、ninja。Debian/Ubuntu 可直接 `sudo apt install openjdk-17-jdk qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-wayland-dev cmake ninja-build`。
 
 ```bash
-./gradlew run            # 直接运行
-./gradlew packageDeb     # 生成 build/compose/binaries/main/deb/neriplayer_<版本>-1_amd64.deb
+# 1) 构建后端 jar
+cd desktop
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew backendJar --offline   # 产物 build/libs/neriplayer-core.jar
+
+# 2) 构建并开发运行 Qt 前端（测试数据隔离在 /tmp/neri-dev，不碰真实曲库）
+cd qt
+tools/dev.sh backend                        # 启动测试后端
+tools/dev.sh app                            # 在桌面上启动应用
+tools/dev.sh screenshot /tmp/shot.png --page home   # 离屏截图（CI/无头环境用）
+
+# 3) 打 deb 安装包（Qt 前端 + jlink 精简 JRE + 后端 jar）
+packaging/build-deb.sh 2.0.0
 ```
 
-打包时会自动裁剪图标库（`trimMaterialIcons` 任务）：Compose 的 `material-icons-extended` 把一万多个图标
-都编成了独立类（jar 36 MB，且 class 已是 deflate 过的，deb 再压缩几乎压不动），而应用真正用到的只有几十个。
-编译期照常使用完整依赖，打包与运行时替换成扫描常量池后只保留被引用图标的精简 jar，安装包因此从 95 MB 降到 59 MB。
-新增图标用法后无需手工维护：该任务每次打包都会重新扫描本工程的 class 与编译期依赖重新生成。
+## 与上游同步
 
-### 测试
+桌面版代码全部位于 `desktop/`，与上游 Android 工程零重叠，合并上游更新时通常只需处理 README。
+详见 [`docs/upstream-sync.md`](./docs/upstream-sync.md)。
 
-```bash
-./gradlew selfTest                  # 核心自检：解码 / 播放 / 跳转 / 变速 / 歌词 / 在线接口 / 同步与悬浮歌词算法
-./gradlew syncE2E -DGH_TOKEN=xxx     # GitHub 同步真实端到端（会创建并自动删除一个临时私有仓库）
-python3 tools/mock_github.py 8765    # 无 Token 时用本地 GitHub API 模拟服务跑 syncE2E（配合 GH_MOCK_BASE）
-```
+## 许可证
 
-界面回归通过脚本驱动：设置环境变量 `NERIPLAYER_UI_TEST="tab:library;play:0;pause;sleep:9000;expect-paused"`
-即可让应用自动执行一串操作并输出断言结果，便于在无人值守环境下验证界面行为。
-脚本里还能插入 `mem-report` 打印一次内存快照（JVM 堆 / 进程常驻内存 / 封面缓存占用），
-用来做内存占用的回归对比；`work/tools/measure-memory.sh` 与 `work/tools/analyze-memory.sh`
-（在交付工作区中）则按时间采样 RSS / PSS 并对内存映射做拆解。
-
-## 代码结构
-
-```
-desktop/
-├── src/main/kotlin/moe/ouom/neriplayer/desktop/
-│   ├── Main.kt                 应用入口、窗口、悬浮歌词窗口与快捷键
-│   ├── core/                   数据模型、XDG 存储、媒体库扫描、歌单与统计、播放引擎与播放器
-│   ├── net/                    HTTP 客户端、网易云接口、哔哩哔哩 WBI 签名接口、扫码登录
-│   ├── sync/                   GitHub 同步：数据模型、序列化、Git 传输、合并策略
-│   ├── ui/                    主题、通用组件、悬浮歌词、同步与账号设置、各页面
-│   └── tools/                 自检与界面自动化脚本
-├── docs/screenshots/           界面截图
-└── packaging/                  deb 图标与许可文件
-```
-
-## 已知限制
-
-- 在线音源通过各平台公开接口访问，音频地址具有时效性；播放失败会自动提示并可重试。
-- 哔哩哔哩收藏夹列表接口不返回封面，未打开过时显示占位图标，打开过一次后会缓存首条封面。
-- 未启用窗口合成器的桌面环境无法显示透明背景（退化为不透明底色）。
-- 多 P 视频（合集）目前播放第一段音频轨。
-
-## 许可
-
-与原项目一致，以 **GPL-3.0** 发布（见 [packaging/LICENSE](packaging/LICENSE)）。
-本项目仅供学习与研究使用，请遵守各平台服务条款；不提供任何媒体内容、密钥，
-也不具备绕过付费 / DRM / 地区限制的能力。
+GPL-3.0-only，与原项目一致。图标字体（Material Symbols）遵循 Apache 2.0。

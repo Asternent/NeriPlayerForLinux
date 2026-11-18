@@ -31,12 +31,16 @@ Rectangle {
         onClicked: card.activated()
     }
 
-    Row {
+    Item {
+        id: inner
+
         anchors.fill: parent
         anchors.margins: Theme.spacingSm
-        spacing: 10
 
         Item {
+            id: coverBox
+
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: 56
             height: 56
@@ -66,9 +70,25 @@ Rectangle {
             }
         }
 
-        Column {
+        IconButton {
+            id: playButton
+
+            anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.max(0, card.width - 56 - 28 - 10 - 10 - Theme.spacingSm * 2)
+            size: 28
+            iconSize: 18
+            icon: card.playing ? "graphic_eq" : "play_arrow"
+            iconColor: Theme.primary
+            tooltip: "播放"
+            onClicked: card.activated()
+        }
+
+        Column {
+            anchors.left: coverBox.right
+            anchors.leftMargin: 10
+            anchors.right: playButton.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 
             Text {
@@ -88,16 +108,6 @@ Rectangle {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.textStyle("labelSmall").size
             }
-        }
-
-        IconButton {
-            anchors.verticalCenter: parent.verticalCenter
-            size: 28
-            iconSize: 18
-            icon: card.playing ? "graphic_eq" : "play_arrow"
-            iconColor: Theme.primary
-            tooltip: "播放"
-            onClicked: card.activated()
         }
     }
 

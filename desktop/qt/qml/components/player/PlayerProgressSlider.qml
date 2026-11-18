@@ -1,5 +1,4 @@
 import QtQuick
-import "../"
 
 // 播放页进度条：可拖动 seek，拖动过程中显示拖拽位置，松手才真正 seek。
 Item {

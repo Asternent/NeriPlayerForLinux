@@ -1,5 +1,4 @@
 import QtQuick
-import "../"
 
 // M3 开关（Switch）。checked 由父级绑定到数据源，点击时只触发 toggled，
 // 由父级调用命令让数据源回写，避免打断绑定。

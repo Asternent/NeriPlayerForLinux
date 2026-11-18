@@ -5,8 +5,11 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFile>
+#include <QJsonDocument>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QImage>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -55,8 +58,37 @@ QString resolveQmlDir(const QString &explicitDir)
 
 } // namespace
 
+namespace {
+
+/**
+ * 手动界面缩放（设置项 uiScale > 0 时生效）。
+ * 在 QGuiApplication 构造前读取 settings.json 并设置 QT_SCALE_FACTOR —— Qt 的平台插件
+ * 在初始化时就读取该环境变量，之后再改无效。
+ */
+void applyManualUiScale()
+{
+    if (!qEnvironmentVariableIsEmpty("QT_SCALE_FACTOR"))
+        return;
+    QString configDir = QString::fromLocal8Bit(qgetenv("XDG_CONFIG_HOME"));
+    if (configDir.isEmpty())
+        configDir = QDir::homePath() + QStringLiteral("/.config");
+    const QString path = configDir + QStringLiteral("/NeriPlayer/settings.json");
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject())
+        return;
+    const double scale = doc.object().value(QStringLiteral("uiScale")).toDouble(0.0);
+    if (scale > 0.0 && scale >= 0.5 && scale <= 3.0)
+        qputenv("QT_SCALE_FACTOR", QByteArray::number(scale));
+}
+
+} // namespace
+
 int main(int argc, char *argv[])
 {
+    applyManualUiScale();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("NeriPlayer"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("NeriPlayer"));
@@ -87,11 +119,14 @@ int main(int argc, char *argv[])
     QCommandLineOption screenshotAllOption(QStringLiteral("screenshot-all"),
                                            QStringLiteral("抓取所有顶层窗口后退出（前缀路径，生成 <prefix>-1.png 等）"),
                                            QStringLiteral("prefix"));
+    QCommandLineOption selftestOption(QStringLiteral("selftest"),
+                                      QStringLiteral("开发自检：验证 QML 全局包装器可调用后退出"));
     QCommandLineOption waitOption(QStringLiteral("wait"),
                                   QStringLiteral("截图前的等待毫秒数"),
                                   QStringLiteral("ms"),
                                   QStringLiteral("1200"));
     parser.addOption(qmlDirOption);
+    parser.addOption(selftestOption);
     parser.addOption(screenshotOption);
     parser.addOption(screenshotAllOption);
     parser.addOption(pageOption);
@@ -107,6 +142,18 @@ int main(int argc, char *argv[])
     }
 
     const QString qmlDir = resolveQmlDir(parser.value(qmlDirOption));
+
+    // 应用图标（窗口/Wayland 任务栏；桌面文件里的 Icon= 之外再兜底一层）
+    for (const QString &candidate : {
+             qmlDir + QStringLiteral("/resources/neriplayer.png"),
+             QCoreApplication::applicationDirPath() + QStringLiteral("/../../desktop/packaging/neriplayer.png"),
+             QStringLiteral("/usr/share/icons/hicolor/128x128/apps/neriplayer.png"),
+         }) {
+        if (QFileInfo::exists(candidate)) {
+            QGuiApplication::setWindowIcon(QIcon(candidate));
+            break;
+        }
+    }
     qInfo() << "[qml] loading from" << qmlDir;
 
     BackendClient backend;
@@ -115,17 +162,22 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Backend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("SystemTheme"), &systemTheme);
 
-    // 全局对象的创建顺序要注意依赖：Api 只依赖 Backend；Player/Theme/Settings 依赖 Api
-    QObject *api = createGlobal(engine, qmlDir, QStringLiteral("Api.qml"));
-    QObject *player = createGlobal(engine, qmlDir, QStringLiteral("Player.qml"));
-    QObject *theme = createGlobal(engine, qmlDir, QStringLiteral("Theme.qml"));
-    QObject *settings = createGlobal(engine, qmlDir, QStringLiteral("Settings.qml"));
-    QObject *nav = createGlobal(engine, qmlDir, QStringLiteral("Nav.qml"));
-    QObject *toast = createGlobal(engine, qmlDir, QStringLiteral("Toast.qml"));
-    if (!api || !player || !theme || !settings || !nav || !toast)
+    // 全局对象用 *Global.qml 命名：如果文件就叫 Player.qml，同一目录的隐式导入会让 "Player"
+    // 解析成 QML 类型而不是 context property（表现为跨对象调用 TypeError）。
+    // Api 只依赖 Backend；Player/Theme/Settings 在函数体里引用 Api，所以 Api 先创建并立刻注册。
+    QObject *api = createGlobal(engine, qmlDir, QStringLiteral("ApiGlobal.qml"));
+    if (!api)
+        return 1;
+    engine.rootContext()->setContextProperty(QStringLiteral("Api"), api);
+
+    QObject *player = createGlobal(engine, qmlDir, QStringLiteral("PlayerGlobal.qml"));
+    QObject *theme = createGlobal(engine, qmlDir, QStringLiteral("ThemeGlobal.qml"));
+    QObject *settings = createGlobal(engine, qmlDir, QStringLiteral("SettingsGlobal.qml"));
+    QObject *nav = createGlobal(engine, qmlDir, QStringLiteral("NavGlobal.qml"));
+    QObject *toast = createGlobal(engine, qmlDir, QStringLiteral("ToastGlobal.qml"));
+    if (!player || !theme || !settings || !nav || !toast)
         return 1;
 
-    engine.rootContext()->setContextProperty(QStringLiteral("Api"), api);
     engine.rootContext()->setContextProperty(QStringLiteral("Player"), player);
     engine.rootContext()->setContextProperty(QStringLiteral("Theme"), theme);
     engine.rootContext()->setContextProperty(QStringLiteral("Settings"), settings);

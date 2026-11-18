@@ -16,13 +16,10 @@ Item {
         color: Theme.background
     }
 
-    FocusScope {
+    Item {
         id: scope
 
         anchors.fill: parent
-        focus: root.visible
-
-        Keys.onEscapePressed: root.closeRequested()
 
         Item {
             id: topBar
@@ -128,6 +125,13 @@ Item {
             horizontalPadding: 32
             verticalPadding: 24
         }
+    }
+
+    // 用 Shortcut 而不是焦点 Keys，避免抢走全局快捷键的焦点（关闭后无需恢复焦点）。
+    Shortcut {
+        enabled: root.visible
+        sequence: "Escape"
+        onActivated: root.closeRequested()
     }
 
     readonly property real currentScale: {

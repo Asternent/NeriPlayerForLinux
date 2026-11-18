@@ -1,5 +1,9 @@
 # NeriPlayer Linux 桌面端 · 视觉与交互设计规格（Qt6 / QML 复刻基线）
 
+> **状态说明（2.0）**：迁移已完成，Compose 前端代码已移除；本文保留为"还原 Compose 版视觉"的规格参考，
+> 文中引用的 `ui/*.kt` 行号需要查看 git 历史（提交 `0e8d3385` 之前）。Qt 端整体观感以
+> `desktop/docs/screenshots-qt/` 下的实际截图为最终基准。
+>
 > 目标读者：Qt6/QML 前端实现者、并行开发协调者、UI 走查者。
 > 目的：把现有 **Kotlin + Compose Desktop** 前端（`desktop/src/main/kotlin/moe/ouom/neriplayer/desktop/ui/`）的视觉与交互，逐项落成可执行的 QML 规格，做到"像素级可复刻、交互可对齐、动效时长一致"。
 

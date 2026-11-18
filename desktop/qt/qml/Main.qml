@@ -216,5 +216,45 @@ ApplicationWindow {
             shortcuts.activate()
     }
 
-    Component.onCompleted: shortcuts.activate()
+    Component.onCompleted: {
+        shortcuts.activate()
+        centerWindow()
+        if (Qt.application.arguments.indexOf("--selftest") >= 0)
+            runSelfTest()
+    }
+
+    /** 开发自检：调用各全局包装器，验证它们内部对 Api/Player 的引用可用。 */
+    function runSelfTest() {
+        console.log("[selftest] typeof Api=", typeof Api, "call=", typeof Api.call, "get=", typeof Api.get,
+                    "Promise=", typeof Promise, "Toast=", typeof Toast)
+        try { Api.get("app.ping", {}, function(result, error) {
+                  console.log("[selftest] Api.get result=", JSON.stringify(result), "error=", JSON.stringify(error))
+              }) } catch (e) { console.warn("[selftest] Api.get threw:", e) }
+        try { const p2 = new Promise(function(res, rej) { res(1) }); console.log("[selftest] new Promise ok, then=", typeof p2.then) }
+        catch (e) { console.warn("[selftest] new Promise failed:", e) }
+        try { const p3 = Api.call("app.ping"); console.log("[selftest] Api.call direct ok, then=", typeof p3.then) }
+        catch (e) { console.warn("[selftest] Api.call direct failed:", e) }
+        try { const p4 = Api.call("app.ping", {}); console.log("[selftest] Api.call {}-params ok") }
+        catch (e) { console.warn("[selftest] Api.call {}-params failed:", e) }
+        try { const p5 = Api.call("app.ping", { "k": 1 }); console.log("[selftest] Api.call obj-params ok") }
+        catch (e) { console.warn("[selftest] Api.call obj-params failed:", e) }
+        try { Player._send("app.ping"); console.log("[selftest] Player._send no-params ok") }
+        catch (e) { console.warn("[selftest] Player._send no-params failed:", e) }
+        try { Player.setVolume(0.7); console.log("[selftest] Player.setVolume ok") }
+        catch (e) { console.warn("[selftest] Player.setVolume failed:", e) }
+        try { Settings.set("volume", 0.7); console.log("[selftest] Settings.set ok") }
+        catch (e) { console.warn("[selftest] Settings.set failed:", e) }
+        try { Player.enqueue([]); console.log("[selftest] Player.enqueue ok") }
+        catch (e) { console.warn("[selftest] Player.enqueue failed:", e) }
+        try { Api.call("app.ping").then(function(r) { console.log("[selftest] Api.ok", r.pong) }) }
+        catch (e) { console.warn("[selftest] Api failed:", e) }
+    }
+
+    /** 首次启动把窗口居中到当前屏幕（避免 Wayland 下默认出现在左上角）。 */
+    function centerWindow() {
+        if (!screen)
+            return
+        x = Math.round(screen.virtualX + (screen.width - width) / 2)
+        y = Math.round(screen.virtualY + (screen.height - height) / 2)
+    }
 }

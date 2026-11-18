@@ -21,7 +21,7 @@ Item {
     property real verticalPadding: 24
 
     function ensureVisible() {
-        if (!autoScroll || lines.length === 0)
+        if (!autoScroll || !visible || lines.length === 0)
             return
         if (currentIndex < 0) {
             list.positionViewAtBeginning()
@@ -32,6 +32,12 @@ Item {
 
     onCurrentIndexChanged: ensureVisible()
     onLinesChanged: Qt.callLater(ensureVisible)
+    // 首次布局完成前列表高度为 0，positionViewAtIndex 不会生效；高度/可见性变化后再补一次
+    onHeightChanged: Qt.callLater(ensureVisible)
+    onVisibleChanged: {
+        if (visible)
+            Qt.callLater(ensureVisible)
+    }
 
     // 加载中
     Item {

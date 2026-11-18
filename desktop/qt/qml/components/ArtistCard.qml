@@ -4,10 +4,10 @@ import QtQuick
 Item {
     id: card
 
-    property var data: null
-    property string name: data && data.name !== undefined ? data.name : ""
-    property string avatarUrl: data && data.avatarUrl !== undefined && data.avatarUrl !== null ? data.avatarUrl : ""
-    property string subtitle: data && data.songCount !== undefined ? (data.songCount + " 首") : ""
+    property var entry: null
+    property string name: entry && entry.name !== undefined ? entry.name : ""
+    property string avatarUrl: entry && entry.avatarUrl !== undefined && entry.avatarUrl !== null ? entry.avatarUrl : ""
+    property string subtitle: entry && entry.songCount !== undefined ? (entry.songCount + " 首") : ""
     property real cardWidth: 136
 
     signal clicked()

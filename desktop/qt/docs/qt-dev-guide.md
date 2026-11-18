@@ -12,13 +12,13 @@
 | --- | --- |
 | Qt 前端 | `desktop/qt/`（CMake 工程，QML 从源码目录加载，改 QML 不需要编译） |
 | QML 根 | `desktop/qt/qml/`（`Main.qml`、`AppShell.qml`、`globals/`、`components/`、`pages/`） |
-| QML 全局对象 | `desktop/qt/qml/globals/{Api,Player,Settings,Theme,Nav,Toast}.qml` |
+| QML 全局对象 | `desktop/qt/qml/globals/{Api,Player,Settings,Theme,Nav,Toast}Global.qml`（QML 里用 context property 名 `Api`/`Player`/… 访问；文件必须带 `Global` 后缀，否则同目录隐式导入会把 `Player` 解析成 QML 类型） |
 | 后端（Kotlin） | `desktop/src/main/kotlin/moe/ouom/neriplayer/desktop/backend/` |
 | 后端命令 | `backend/api/*Api.kt`，在 `BackendMain.kt` 里逐个 `register(...)` |
 | 协议文档 | `desktop/docs/protocol.md` + `desktop/docs/protocol-<domain>.md` |
 | 核心 API 清单 | `desktop/docs/core-api-inventory.md`（**迁移必读**，含每个 UI 调用点） |
 | 设计规格 | `desktop/qt/docs/design-spec.md`（颜色/字号/间距/组件尺寸，含 Compose 源码行号） |
-| Compose 旧前端（参考实现） | `desktop/src/main/kotlin/moe/ouom/neriplayer/desktop/ui/`（**只读参考，不要修改**） |
+| Compose 旧前端 | 已在 2.0 版本移除；需要对照时看 git 历史（`git show 0e8d3385^:desktop/src/main/kotlin/moe/ouom/neriplayer/desktop/ui/...`） |
 
 ## 2. 构建 / 运行 / 截图
 
@@ -50,7 +50,10 @@ tools/dev.sh screenshot /tmp/xx.png --page library --wait 2500
 - 改 C++（`src/*.cpp|h`）：先 `tools/dev.sh build`。
 - 改后端 Kotlin：`tools/dev.sh stop` 后直接 `tools/dev.sh backend`（它会串行构建 jar 并启动私有副本）。
   多个 agent 并行时 gradle 构建已用 flock 串行化；运行中的后端使用 `$NERI_TEST_ROOT/neriplayer-core.jar` 副本，不受他人重建影响。
-- 截图是 offscreen（`QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software`），不会弹窗打扰用户。
+- 截图是离屏渲染（`QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl`，
+  `dev.sh` 已内置），不会弹窗打扰用户；用 RHI 是因为软件后端不支持 MultiEffect 圆角遮罩。
+- 多个进程同时截图时用不同的 `NERI_TEST_ROOT`（单实例 socket 也在该目录下），否则后启动的进程会
+  把"激活窗口"发给前一个实例后直接退出。
 - `--page` 可取值：`home/explore/library/settings/nowplaying/recent/stats/downloads/localPlaylist/localArtist/onlineCollection/remoteArtist`。
 - 也可以用 `read_image` 工具直接查看截图确认视觉效果。
 
@@ -125,6 +128,10 @@ clearQueue() / startSleepTimer(min) / stopAfterCurrentSong() / cancelSleepTimer(
 
 ### `Toast` — 轻提示
 `Toast.show(text, kind)`（kind: `"info"|"error"`）。
+
+歌曲列表等共享组件在 `qml/components/library/`（`SongRow`/`SongListCard`/`PlaylistCoverCard` 等，
+由媒体库页面维护，其它页面直接复用）；`qml/components/` 根目录放跨页面通用件（`CoverArt`/`NeriIcon`/
+`IconButton`/`SectionHeader`/`EmptyState` 等）。
 
 ### `Backend` / `SystemTheme`（C++，一般页面不用直接碰）
 `Backend.connected`、`Backend.call(method, params, cb)`、`Backend.event(name, data)`；

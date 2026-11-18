@@ -16,10 +16,9 @@ Item {
     // 封面之外的固定高度（标题/进度/传输/工具行），用于矮窗口时收缩封面，避免内容溢出。
     readonly property real coreFixedHeight: 18 + 52 + 10 + 60 + 14 + 68 + 16 + 48
 
-    /** 封面：窄屏 220 / 宽屏 300；可用高度不足时按比例收缩。 */
+    /** 封面：窄屏 220 / 宽屏 300；窗口较矮时收缩，保证整页不溢出。 */
     readonly property real coverSize: {
-        const padding = page.wide ? 48 : 40
-        const available = contentArea.height - page.coreFixedHeight - padding
+        const available = contentArea.height - page.coreFixedHeight - 12
         return Math.max(150, Math.min(page.wide ? 300 : 220, available))
     }
 
