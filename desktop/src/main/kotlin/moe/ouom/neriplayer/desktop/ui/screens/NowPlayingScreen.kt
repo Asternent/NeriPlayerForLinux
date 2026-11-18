@@ -1,5 +1,13 @@
 package moe.ouom.neriplayer.desktop.ui.screens
 
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -142,7 +150,27 @@ fun NowPlayingScreen(
 
     val lyricIndex = remember(lyrics, position) { currentLyricIndex(lyrics.lines, position) }
 
-    Box(modifier.fillMaxSize()) {
+    val backKeyFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { backKeyFocusRequester.requestFocus() }
+    }
+    Box(
+        modifier
+            .fillMaxSize()
+            .focusable(interactionSource = remember { MutableInteractionSource() })
+            .focusRequester(backKeyFocusRequester)
+            .onKeyEvent { event ->
+                // Escape / 返回键：退出播放页回到上一个页面（通常是主页）
+                if (event.type == KeyEventType.KeyDown &&
+                    (event.key == Key.Escape || event.key == Key.Back)
+                ) {
+                    onBack()
+                    true
+                } else {
+                    false
+                }
+            },
+    ) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
