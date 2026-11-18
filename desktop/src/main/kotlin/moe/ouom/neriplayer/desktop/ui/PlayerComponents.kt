@@ -347,23 +347,28 @@ private fun MiniPlayerCard(
                 }
             }
 
-            // 就地弹出的功能面板：贴在控制栏上方居中，不跳转播放页
+            // 就地弹出的功能面板：底边贴着控制栏顶部、右边对齐，从右滑入，不跳转播放页。
+            // 用零尺寸锚点放在控制栏右上角，Popup 以 BottomEnd 对齐它，面板就向上展开。
             val panel = openPanel
             if (panel != null) {
+                Box(Modifier.align(Alignment.TopEnd).size(0.dp)) {
                 Popup(
-                    alignment = Alignment.TopEnd,
-                    offset = androidx.compose.ui.unit.IntOffset(0, -8),
+                    alignment = Alignment.BottomEnd,
+                    offset = androidx.compose.ui.unit.IntOffset(0, -4),
                     onDismissRequest = { openPanel = null },
                     properties = PopupProperties(focusable = true, dismissOnClickOutside = true),
                 ) {
+                    // 延迟一帧再置 visible，让首次组合也播放滑入动画
+                    var showPanel by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { showPanel = true }
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = true,
+                        visible = showPanel,
                         enter = androidx.compose.animation.slideInHorizontally(
-                            initialOffsetX = { it },
+                            initialOffsetX = { it / 2 },
                             animationSpec = androidx.compose.animation.core.tween(220),
                         ),
                         exit = androidx.compose.animation.slideOutHorizontally(
-                            targetOffsetX = { it },
+                            targetOffsetX = { it / 2 },
                             animationSpec = androidx.compose.animation.core.tween(180),
                         ),
                     ) {
@@ -413,6 +418,7 @@ private fun MiniPlayerCard(
                         )
                     }
                     }
+                }
                 }
             }
         }
@@ -590,8 +596,10 @@ fun OverlayPanel(
                 .clickable(onClick = onClose),
             contentAlignment = Alignment.TopStart,
         ) {
+            var show by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { show = true }
             androidx.compose.animation.AnimatedVisibility(
-                visible = true,
+                visible = show,
                 enter = androidx.compose.animation.slideInHorizontally(
                     initialOffsetX = { -it },
                     animationSpec = androidx.compose.animation.core.tween(220),
