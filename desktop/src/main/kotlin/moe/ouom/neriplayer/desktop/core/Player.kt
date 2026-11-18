@@ -314,6 +314,13 @@ class PlayerManager(
         engine.seekTo(positionMs)
     }
 
+    /** 直接播放队列中指定下标（Qt 前端的队列点击用）。 */
+    fun playAt(index: Int) {
+        if (index !in _queue.value.indices) return
+        _currentIndex.value = index
+        playCurrent()
+    }
+
     fun restartCurrent() {
         playCurrent()
     }

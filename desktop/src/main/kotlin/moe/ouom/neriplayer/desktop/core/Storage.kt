@@ -83,6 +83,8 @@ data class AppSettings(
     val themeSeedColor: String = "0061A4",
     val customSeedColors: List<String> = emptyList(),
     val dynamicColor: Boolean = false,
+    /** 主题跟随系统：深浅色与强调色都用桌面环境（KDE/GNOME）的配置。 */
+    val followSystemTheme: Boolean = true,
     val darkMode: DarkModeSetting = DarkModeSetting.AUTO,
     val paletteStyle: String = "TonalSpot",
     val colorSpec: String = "SPEC_2021",

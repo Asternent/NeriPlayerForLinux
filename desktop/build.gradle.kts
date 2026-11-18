@@ -248,3 +248,39 @@ tasks.register<JavaExec>("syncE2E") {
     environment("GH_TOKEN", System.getProperty("GH_TOKEN") ?: System.getenv("GH_TOKEN") ?: "")
     environment("GH_MOCK_BASE", System.getProperty("GH_MOCK_BASE") ?: System.getenv("GH_MOCK_BASE") ?: "")
 }
+
+// ---------------------------------------------------------------------------
+// Qt 前端的无头后端（neriplayer-core）
+//
+// Qt 程序启动时用 `java -jar neriplayer-core.jar` 拉起本进程，两者通过
+// Unix domain socket 上的 JSON 协议通信。开发期用 runBackend 直接跑。
+// ---------------------------------------------------------------------------
+
+/** 开发期直接启动后端（阻塞）。 */
+tasks.register<JavaExec>("runBackend") {
+    group = "application"
+    description = "启动 Qt 前端的无头后端"
+    mainClass.set("moe.ouom.neriplayer.desktop.backend.BackendMainKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}
+
+/** 无头后端的可执行 fat jar。 */
+val backendJar by tasks.registering(Jar::class) {
+    group = "build"
+    description = "打包无头后端 neriplayer-core.jar（供 Qt 前端 java -jar 拉起）"
+    archiveFileName.set("neriplayer-core.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = "moe.ouom.neriplayer.desktop.backend.BackendMainKt"
+    }
+    from(sourceSets["main"].output)
+    dependsOn(configurations.runtimeClasspath)
+    from({
+        configurations.runtimeClasspath.get()
+            .filter { it.exists() }
+            .map { if (it.isDirectory) it else zipTree(it) }
+    })
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    exclude("module-info.class", "META-INF/versions/*/module-info.class")
+}
