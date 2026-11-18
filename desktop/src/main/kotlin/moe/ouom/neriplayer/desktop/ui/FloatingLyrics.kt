@@ -221,31 +221,6 @@ fun FloatingLyricsWindow(
         // 歌词字号、内边距与控制按钮随界面缩放一起放大
         ApplyUiScale(uiScale) {
         LaunchedEffect(Unit) { windowRef.value = window }
-
-        // 锁定时把歌词区设为鼠标穿透，仅底部控制条区域可接收点击。
-        // 解锁或窗口关闭时恢复整个窗口可交互。失败会静默降级，不影响其它功能。
-        LaunchedEffect(settings.floatingLyricsLocked, window.width, window.height) {
-            val handle = runCatching { window.windowHandle }.getOrDefault(-1L)
-            if (!settings.floatingLyricsLocked || handle <= 0) {
-                FloatingInputShape.setShape(handle)
-            } else {
-                val controlW = with(density) { 168.dp.roundToPx() }
-                val controlH = with(density) { 40.dp.roundToPx() }
-                val x = (window.width - controlW) / 2
-                val y = (window.height - controlH).coerceAtLeast(0)
-                FloatingInputShape.setShape(
-                    handle,
-                    FloatingInputShape.Rect(x, y, controlW, controlH.coerceAtMost(window.height)),
-                )
-            }
-        }
-        DisposableEffect(Unit) {
-            onDispose {
-                val handle = runCatching { window.windowHandle }.getOrDefault(-1L)
-                if (handle > 0) FloatingInputShape.setShape(handle)
-            }
-        }
-
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(600)
             println(
@@ -357,7 +332,8 @@ fun FloatingLyricsWindow(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         ) {
             Column(
-                modifier = Modifier.fillMaxSize(),
+                // 底部预留 50dp 与窗口增高量抵消，使歌词维持在视觉中心、不与控制条重叠
+                modifier = Modifier.fillMaxSize().padding(bottom = 50.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = when (alignment) {
                     FloatingLyricAlignment.LEFT -> Alignment.Start
@@ -386,9 +362,8 @@ fun FloatingLyricsWindow(
                 }
             }
 
-            val locked = settings.floatingLyricsLocked
-            // 锁定时歌词区鼠标穿透，窗口收不到 hover，控制条必须常驻才点得到
-            if (hovered || locked) {
+            if (hovered) {
+                val locked = settings.floatingLyricsLocked
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

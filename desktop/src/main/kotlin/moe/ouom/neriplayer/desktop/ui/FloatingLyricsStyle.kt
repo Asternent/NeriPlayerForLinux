@@ -130,5 +130,6 @@ fun floatingWindowHeightDp(settings: AppSettings): Float {
     } else {
         0f
     }
-    return (lineHeight + translation + 28f).coerceAtLeast(64f)
+    // 底部额外留 50dp 给悬浮控制条，避免它贴底时压到翻译行
+    return (lineHeight + translation + 28f + 50f).coerceAtLeast(64f)
 }
