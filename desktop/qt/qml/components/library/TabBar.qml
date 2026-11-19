@@ -25,7 +25,10 @@ Item {
     signal selected(var value)
 
     implicitHeight: 34
-    implicitWidth: flow.width
+    // Row 的 width 不含它自己的 leftMargin，这里要补上，否则右对齐时最后一个
+    // 按钮会被裁掉一截。
+    implicitWidth: root.horizontalPadding * 2 + flow.width
+    width: implicitWidth
 
     function optionValue(option) {
         if (option !== null && typeof option === "object")

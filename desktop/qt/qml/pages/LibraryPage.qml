@@ -291,27 +291,59 @@ Item {
     }
 
     // ---- 主 Tab（本地 / 收藏 / 在线音源）----
-    TabBar {
-        id: primaryTabs
+    // 两行分类合并成一行：主分类靠左、子分类靠右。
+    // 之前两行叠在一起（内容区紧贴主 TabBar 底部、子分类又从父项顶部开始），
+    // 视觉上会重叠；改成同一行左右分布，右侧空间也利用起来了。
+    Item {
+        id: tabRow
 
         anchors.top: header.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 34
-        options: [
-            { value: "local", label: "本地" },
-            { value: "favorites", label: "收藏" },
-            { value: "online", label: "在线音源" }
-        ]
-        value: page.primaryTab
-        onSelected: function(value) { page.primaryTab = value }
+        height: 40
+
+        TabBar {
+            id: primaryTabs
+
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacingLg
+            anchors.verticalCenter: parent.verticalCenter
+            implicitHeight: 34
+            options: [
+                { value: "local", label: "本地" },
+                { value: "favorites", label: "收藏" },
+                { value: "online", label: "在线音源" }
+            ]
+            value: page.primaryTab
+            onSelected: function(value) { page.primaryTab = value }
+        }
+
+        // 子分类（仅本地 Tab）：与主分类同一行、右对齐
+        TabBar {
+            id: localTabs
+
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.spacingLg
+            anchors.verticalCenter: parent.verticalCenter
+            implicitHeight: 34
+            visible: page.primaryTab === "local" && page.errorText === ""
+            horizontalPadding: Theme.spacingLg
+            options: [
+                { value: "songs", label: "歌曲" },
+                { value: "artists", label: "歌手" },
+                { value: "albums", label: "专辑" },
+                { value: "playlists", label: "歌单" }
+            ]
+            value: page.localTab
+            onSelected: function(value) { page.localTab = value }
+        }
     }
 
     // ---- 内容 ----
     Item {
         id: contentArea
 
-        anchors.top: primaryTabs.bottom
+        anchors.top: tabRow.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -386,29 +418,11 @@ Item {
             anchors.bottom: parent.bottom
             visible: page.primaryTab === "local" && page.errorText === ""
 
-            TabBar {
-                id: localTabs
-
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 34
-                horizontalPadding: Theme.spacingLg
-                options: [
-                    { value: "songs", label: "歌曲" },
-                    { value: "artists", label: "歌手" },
-                    { value: "albums", label: "专辑" },
-                    { value: "playlists", label: "歌单" }
-                ]
-                value: page.localTab
-                onSelected: function(value) { page.localTab = value }
-            }
-
             // 歌曲
             Item {
                 id: songsPane
 
-                anchors.top: localTabs.bottom
+                anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
@@ -505,7 +519,7 @@ Item {
             Flickable {
                 id: artistsPane
 
-                anchors.top: localTabs.bottom
+                anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
@@ -553,7 +567,7 @@ Item {
             Flickable {
                 id: albumsPane
 
-                anchors.top: localTabs.bottom
+                anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
@@ -602,7 +616,7 @@ Item {
             Flickable {
                 id: playlistsPane
 
-                anchors.top: localTabs.bottom
+                anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
