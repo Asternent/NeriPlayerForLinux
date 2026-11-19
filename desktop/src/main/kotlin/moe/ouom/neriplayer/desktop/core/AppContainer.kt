@@ -67,7 +67,7 @@ class AppContainer {
     )
     val neteaseLogin = moe.ouom.neriplayer.desktop.net.NeteaseLogin(online.httpService)
     val biliLogin = moe.ouom.neriplayer.desktop.net.BiliLogin(online.httpService)
-    val lyrics = LyricsRepository { song -> online.lyrics(song) }
+    val lyrics = LyricsRepository { song -> online.lyricsStructured(song) }
     val player = PlayerManager(
         settings = settings,
         history = history,

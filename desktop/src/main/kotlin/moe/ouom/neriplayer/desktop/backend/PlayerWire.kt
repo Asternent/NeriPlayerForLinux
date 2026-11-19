@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import moe.ouom.neriplayer.desktop.core.LyricLine
 import moe.ouom.neriplayer.desktop.core.Lyrics
 import moe.ouom.neriplayer.desktop.core.PlayerManager
 import moe.ouom.neriplayer.desktop.core.Song
@@ -28,17 +29,24 @@ object PlayerWire {
         put("source", lyrics.source)
         put("raw", lyrics.raw)
         put("lines", buildJsonArray {
-            for (line in lyrics.lines) add(buildJsonObject {
-                put("timeMs", line.timeMs)
-                put("text", line.text)
-                put("translation", line.translation)
-            })
+            for (line in lyrics.lines) add(lineWire(line))
         })
         put("translated", buildJsonArray {
-            for (line in lyrics.translated) add(buildJsonObject {
-                put("timeMs", line.timeMs)
-                put("text", line.text)
-                put("translation", line.translation)
+            for (line in lyrics.translated) add(lineWire(line))
+        })
+    }
+
+    /** 歌词行（含逐词时间）；字段都是增量，旧消费方读不到时可忽略。 */
+    private fun lineWire(line: LyricLine): JsonObject = buildJsonObject {
+        put("timeMs", line.timeMs)
+        put("text", line.text)
+        put("translation", line.translation)
+        put("endMs", line.endMs)
+        put("words", buildJsonArray {
+            for (word in line.words) add(buildJsonObject {
+                put("startMs", word.startMs)
+                put("durationMs", word.durationMs)
+                put("text", word.text)
             })
         })
     }

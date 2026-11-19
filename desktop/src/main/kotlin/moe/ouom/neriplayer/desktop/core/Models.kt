@@ -102,11 +102,23 @@ data class AlbumGroup(
     val songs: List<Song>,
 )
 
+/** 逐词时间：NetEase yrc 的每个词（中文通常是一两个字）带自己的开始与时长。 */
+@Serializable
+data class LyricWord(
+    val startMs: Long,
+    val durationMs: Long,
+    val text: String,
+)
+
 @Serializable
 data class LyricLine(
     val timeMs: Long,
     val text: String,
     val translation: String? = null,
+    /** 整行结束时间；只有 yrc 等带明确行时长的来源才会填，0 表示未知。 */
+    val endMs: Long = 0L,
+    /** 逐词时间（yrc）；为空表示普通 LRC，前端回退到整行线性进度。 */
+    val words: List<LyricWord> = emptyList(),
 )
 
 @Serializable
