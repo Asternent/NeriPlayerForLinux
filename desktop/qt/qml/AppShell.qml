@@ -13,6 +13,35 @@ Item {
     // 底部栏：迷你播放条(≈70) + 导航栏(80) + 外边距
     readonly property real bottomInset: playerBar.height + navBar.height + Theme.spacingSm
 
+    // 已访问过的页面缓存：key = 路由完整名（tab / 详情页 arg 不同则各自一份）。
+    // Loader 一旦加载就不再销毁，切走时只是 visible=false，回来时保留滚动位置与内部状态，
+    // 也不会重新触发 Component.onCompleted 里的网络请求。
+    property var pageCache: ({})
+    readonly property string currentKey: routeKey(Nav.current)
+
+    function routeKey(route) {
+        if (!route)
+            return ""
+        const arg = route.arg === undefined || route.arg === null
+                    ? "" : (typeof route.arg === "object" ? JSON.stringify(route.arg) : String(route.arg))
+        return (route.kind || "page") + ":" + route.name + ":" + arg
+    }
+
+    /** 取得（必要时创建）某路由对应的 Loader。 */
+    function loaderFor(key, route) {
+        if (shell.pageCache[key])
+            return shell.pageCache[key]
+        const component = Qt.createComponent(Qt.resolvedUrl("PageHost.qml"))
+        const host = component.createObject(pageHostContainer, {
+                                                "cacheKey": key,
+                                                "pageSource": shell.sourceForRoute(route)
+                                            })
+        const cache = shell.pageCache
+        cache[key] = host
+        shell.pageCache = cache
+        return host
+    }
+
     Item {
         id: contentArea
         anchors.left: parent.left
@@ -21,36 +50,50 @@ Item {
         anchors.bottom: bottomBar.top
         clip: true
 
-        Loader {
-            id: pageLoader
+        Item {
+            id: pageHostContainer
             anchors.fill: parent
-            asynchronous: false
-            source: shell.sourceForRoute(Nav.current)
+        }
 
-            // 页面切换：淡入 + 轻微上浮
-            opacity: 0
-            transform: Translate { id: pageShift; y: 10 }
+        // 当前页面切换时：先让新页显示，再淡入 + 轻微上浮。
+        property Item currentHost: null
+        function showCurrentPage() {
+            const route = Nav.current
+            if (!route)
+                return
+            const host = shell.loaderFor(shell.currentKey, route)
+            if (currentHost && currentHost !== host)
+                currentHost.visible = false
+            host.visible = true
+            currentHost = host
+            pageEnter.restart()
+        }
 
-            onSourceChanged: pageEnter.restart()
-            onLoaded: pageEnter.restart()
+        Connections {
+            target: shell
+            function onCurrentKeyChanged() { contentArea.showCurrentPage() }
+        }
 
-            SequentialAnimation {
-                id: pageEnter
-                ParallelAnimation {
-                    NumberAnimation {
-                        target: pageLoader
-                        property: "opacity"
-                        to: 1
-                        duration: Theme.motionMedium
-                        easing.type: Easing.OutCubic
-                    }
-                    NumberAnimation {
-                        target: pageShift
-                        property: "y"
-                        to: 0
-                        duration: Theme.motionMedium
-                        easing.type: Easing.OutCubic
-                    }
+        Component.onCompleted: showCurrentPage()
+
+        SequentialAnimation {
+            id: pageEnter
+            ParallelAnimation {
+                NumberAnimation {
+                    target: pageHostContainer
+                    property: "opacity"
+                    from: 0.6
+                    to: 1
+                    duration: Theme.motionMedium
+                    easing.type: Easing.OutCubic
+                }
+                NumberAnimation {
+                    target: pageHostContainer
+                    property: "y"
+                    from: 6
+                    to: 0
+                    duration: Theme.motionMedium
+                    easing.type: Easing.OutCubic
                 }
             }
         }
