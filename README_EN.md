@@ -10,13 +10,18 @@
 > `.deb` with a slim bundled JRE. Fast startup, low memory, and it follows the desktop's dark/light mode and accent color.
 >
 > - 📖 Desktop docs: [`desktop/README.md`](./desktop/README.md)
-> - ⬇️ Download: [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) → `neriplayer_<version>_amd64.deb`
+> - ⬇️ Download: [Releases](https://github.com/YangQwQ/NeriPlayerForLinux/releases) → `neriplayer_<version>_amd64.deb`
 > - 🔄 Shares the same GitHub sync format with the Android app (playlists / favorites / recents / play stats)
 > - 🔑 QR login for NetEase & Bilibili, local library, lyrics (including floating lyrics), multi-source playback
 > - 🖥️ Background residency: tray (StatusNotifierItem) + control panel + MPRIS media keys + xdg global shortcuts
 > - 🎨 Material 3 UI whose colors follow KDE/GNOME system theme by default
 >
 > Desktop sources live in [`desktop/`](./desktop) and do not overlap with the upstream Android project.
+>
+> **Repository layout**: the Android project is continuously synced from
+> [cwuom/NeriPlayer](https://github.com/cwuom/NeriPlayer) (`upstream` remote). The early
+> [Asternent/NeriPlayerForLinux](https://github.com/Asternent/NeriPlayerForLinux) repository
+> (old Compose Desktop frontend) is no longer updated and is kept only as historical reference (`ast` remote).
 > The content below is the original Android README, kept as-is.
 <h1 align="center">NeriPlayer</h1>
 

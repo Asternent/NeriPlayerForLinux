@@ -4,10 +4,25 @@
 （Linux 桌面版：Qt6/QML 前端 + Kotlin 无头后端）。上游的 Android 工程（`app/`、`build-logic/`、
 `buildSrc/`、`modules/`、`tools_pub/`、`app/src/**` 等）保持原样。
 
+## Remote 约定
+
+历史上桌面版最早来自 [Asternent/NeriPlayerForLinux](https://github.com/Asternent/NeriPlayerForLinux)
+（Compose Desktop 前端，2026-09 后停止更新，Qt 前端替换后已无同步价值）。现在真正需要同步的
+「上游的上游」是 Android 项目本身，remote 命名约定如下：
+
+| remote | 仓库 | 用途 |
+| --- | --- | --- |
+| `origin` | 本仓库 fork（如 `YangQwQ/NeriPlayerForLinux`） | 推送到自己的 GitHub 仓库 |
+| `upstream` | [cwuom/NeriPlayer](https://github.com/cwuom/NeriPlayer) | **Android 上游**，日常同步来源 |
+| `ast` | [Asternent/NeriPlayerForLinux](https://github.com/Asternent/NeriPlayerForLinux) | 旧 Compose Desktop 桌面版来源，已停更，仅历史参考 |
+
+注意：GitHub 页面上的 “forked from” 关系无法直接修改（除非重新 fork 一个仓库再推分支），
+但同步只取决于 remote，不影响日常使用。
+
 ## 日常同步
 
 ```bash
-# 首次：添加上游 remote（remote 名为 upstream）
+# 首次（新克隆时）：添加上游 remote
 git remote add upstream https://github.com/cwuom/NeriPlayer.git
 
 # 以后每次同步
