@@ -3,9 +3,8 @@ import QtQuick.Layouts
 
 // 左侧导航栏（桌面端样式）。
 //
-// 原来是 Material 3 的手机式底部导航（图标 + 文字、底部居中、整宽上浮），在桌面窗口里
-// 看着像手机 App。桌面应用更常见的是**左侧竖向侧边栏**：图标与文字左对齐、选中项以
-// 整行高亮表示、顶部放展开/收起按钮。这里按后者重做。
+// 顶部放「在线内容」类入口（首页 / 探索），底部放「本地管理」类入口
+// （媒体库 / 下载管理 / 设置），这是桌面应用侧边栏的常见布局。
 //
 // 收起状态保存在设置项 navCollapsed 里（默认收起），重启后保持。
 Item {
@@ -24,11 +23,16 @@ Item {
     implicitWidth: collapsed ? collapsedWidth : expandedWidth
     width: implicitWidth
 
-    readonly property var tabs: [
-        { "name": "home", "label": "首页", "icon": "home" },
-        { "name": "explore", "label": "探索", "icon": "explore" },
-        { "name": "library", "label": "媒体库", "icon": "library_music" },
-        { "name": "settings", "label": "设置", "icon": "settings" }
+    /** 顶部：在线内容入口。 */
+    readonly property var primaryTabs: [
+        { "name": "home", "label": "首页", "icon": "home", "kind": "tab" },
+        { "name": "explore", "label": "探索", "icon": "explore", "kind": "tab" }
+    ]
+    /** 底部：本地内容与管理入口（底对齐）。 */
+    readonly property var secondaryTabs: [
+        { "name": "library", "label": "媒体库", "icon": "library_music", "kind": "tab" },
+        { "name": "downloads", "label": "下载管理", "icon": "download", "kind": "panel" },
+        { "name": "settings", "label": "设置", "icon": "settings", "kind": "tab" }
     ]
 
     // 收起/展开过程中内容会短暂超出侧栏宽度，裁剪掉以免画到右侧边界线外面
@@ -127,67 +131,90 @@ Item {
         }
     }
 
-    Column {
-        id: column
-        anchors.top: header.bottom
-        anchors.topMargin: 8
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: bar.collapsed ? 0 : 12
-        anchors.rightMargin: bar.collapsed ? 0 : 12
-        spacing: 4
+    // 导航项模板：顶部组与底部组共用同一套外观与交互
+    Component {
+        id: navDelegate
 
-        Repeater {
-            model: bar.tabs
-            delegate: Rectangle {
-                id: tabItem
-                required property var modelData
-                readonly property bool selected: Nav.tab === modelData.name
+        Rectangle {
+            id: tabItem
+            required property var modelData
 
-                width: column.width
-                height: 44
-                radius: 10
-                color: tabItem.selected
-                       ? Theme.secondaryContainer
-                       : (tabHover.hovered ? Theme.withAlpha(Theme.onSurfaceColor, 0.06)
-                                           : "transparent")
+            readonly property bool isPanel: modelData.kind === "panel"
+            readonly property bool selected: isPanel
+                                             ? (Nav.activePanel === modelData.name)
+                                             : (Nav.tab === modelData.name)
 
-                Behavior on color {
-                    ColorAnimation {
+            width: ListView.view ? ListView.view.width : parent.width
+            height: 44
+            radius: 10
+            color: tabItem.selected
+                   ? Theme.secondaryContainer
+                   : (tabHover.hovered ? Theme.withAlpha(Theme.onSurfaceColor, 0.06)
+                                       : "transparent")
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Theme.motionShort
+                    easing.type: Theme.easingStandard
+                }
+            }
+
+            // 左侧选中指示条
+            Rectangle {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: 3
+                height: tabItem.selected ? 20 : 0
+                radius: 2
+                color: Theme.primary
+
+                Behavior on height {
+                    NumberAnimation {
                         duration: Theme.motionShort
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            // 收起态：居中的图标。与展开态图标做交叉淡入淡出，
+            // 这样图标是「原地淡入淡出 + 轻微横移」，不会突然跳位。
+            NeriIcon {
+                anchors.centerIn: parent
+                name: tabItem.modelData.icon
+                filled: tabItem.selected
+                iconSize: 22
+                color: tabItem.selected
+                       ? Theme.onSecondaryContainerColor
+                       : Theme.onSurfaceVariantColor
+                opacity: bar.collapsed ? 1 : 0
+                visible: opacity > 0
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.motionMedium
                         easing.type: Theme.easingStandard
                     }
                 }
+            }
 
-                // 左侧选中指示条
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 3
-                    height: tabItem.selected ? 20 : 0
-                    radius: 2
-                    color: Theme.primary
+            RowLayout {
+                anchors.left: parent.left
+                anchors.leftMargin: 14
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 12
+                visible: !bar.collapsed
 
-                    Behavior on height {
-                        NumberAnimation {
-                            duration: Theme.motionShort
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                }
-
-                // 收起态：居中的图标。与展开态图标做交叉淡入淡出，
-                // 这样图标是「原地淡入淡出 + 轻微横移」，不会突然跳位。
                 NeriIcon {
-                    anchors.centerIn: parent
+                    id: icon
                     name: tabItem.modelData.icon
                     filled: tabItem.selected
                     iconSize: 22
                     color: tabItem.selected
                            ? Theme.onSecondaryContainerColor
                            : Theme.onSurfaceVariantColor
-                    opacity: bar.collapsed ? 1 : 0
-                    visible: opacity > 0
+                    opacity: bar.collapsed ? 0 : 1
 
                     Behavior on opacity {
                         NumberAnimation {
@@ -197,64 +224,73 @@ Item {
                     }
                 }
 
-                RowLayout {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 12
-                    visible: !bar.collapsed
+                Text {
+                    Layout.fillWidth: true
+                    // 与图标同时淡出，避免文字瞬间消失造成跳变
+                    opacity: bar.collapsed ? 0 : 1
+                    visible: opacity > 0
+                    text: tabItem.modelData.label
+                    elide: Text.ElideRight
+                    color: tabItem.selected ? Theme.onSurfaceColor : Theme.onSurfaceVariantColor
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    font.weight: tabItem.selected ? Font.DemiBold : Font.Medium
 
-                    NeriIcon {
-                        id: icon
-                        name: tabItem.modelData.icon
-                        filled: tabItem.selected
-                        iconSize: 22
-                        color: tabItem.selected
-                               ? Theme.onSecondaryContainerColor
-                               : Theme.onSurfaceVariantColor
-                        opacity: bar.collapsed ? 0 : 1
-
-                        Behavior on opacity {
-                            NumberAnimation {
-                                duration: Theme.motionMedium
-                                easing.type: Theme.easingStandard
-                            }
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Theme.motionMedium
+                            easing.type: Theme.easingStandard
                         }
                     }
-
-                    Text {
-                        Layout.fillWidth: true
-                        // 与图标同时淡出，避免文字瞬间消失造成跳变
-                        opacity: bar.collapsed ? 0 : 1
-                        visible: opacity > 0
-                        text: tabItem.modelData.label
-                        elide: Text.ElideRight
-                        color: tabItem.selected ? Theme.onSurfaceColor : Theme.onSurfaceVariantColor
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 14
-                        font.weight: tabItem.selected ? Font.DemiBold : Font.Medium
-
-                        Behavior on opacity {
-                            NumberAnimation {
-                                duration: Theme.motionMedium
-                                easing.type: Theme.easingStandard
-                            }
-                        }
-                    }
-                }
-
-                HoverHandler {
-                    id: tabHover
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Nav.openTab(tabItem.modelData.name)
                 }
             }
+
+            HoverHandler {
+                id: tabHover
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (tabItem.isPanel)
+                        Nav.openPanel(tabItem.modelData.name)
+                    else
+                        Nav.openTab(tabItem.modelData.name)
+                }
+            }
+        }
+    }
+
+    // ---- 顶部导航组 ----
+    Column {
+        anchors.top: header.bottom
+        anchors.topMargin: 8
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: bar.collapsed ? 0 : 12
+        anchors.rightMargin: bar.collapsed ? 0 : 12
+        spacing: 4
+
+        Repeater {
+            model: bar.primaryTabs
+            delegate: navDelegate
+        }
+    }
+
+    // ---- 底部导航组（底对齐）----
+    Column {
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 12
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: bar.collapsed ? 0 : 12
+        anchors.rightMargin: bar.collapsed ? 0 : 12
+        spacing: 4
+
+        Repeater {
+            model: bar.secondaryTabs
+            delegate: navDelegate
         }
     }
 }
