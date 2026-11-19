@@ -123,6 +123,12 @@ data class AppSettings(
     val nowPlayingAutoHideControls: Boolean = true,
     /** 控制条自动隐藏延迟（毫秒）。 */
     val nowPlayingAutoHideDelayMs: Int = 2600,
+    /** 圆形封面是否缓慢旋转（黑胶效果，仅 CIRCLE 形状生效）。 */
+    val nowPlayingCoverRotate: Boolean = false,
+    /** 播放页歌曲信息的水平对齐：LEFT / CENTER / RIGHT。 */
+    val nowPlayingInfoAlignment: String = "LEFT",
+    /** 当前歌词行是否加辉光效果。 */
+    val nowPlayingLyricsGlow: Boolean = true,
     /** 界面缩放（HiDPI）：0 = 跟随桌面缩放，其余为 1.0 / 1.25 / 1.5 … 的固定比例。 */
     val uiScale: Float = 0f,
     val qualityPreference: String = "exhigh",
