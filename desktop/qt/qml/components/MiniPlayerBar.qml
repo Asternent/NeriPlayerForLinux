@@ -230,12 +230,67 @@ Item {
 
                     // 右侧功能按钮统一带 tooltip；歌单（队列）放在最右边——
                     // 它是最常用的入口，放在末尾更符合「主操作靠边」的习惯。
-                    IconButton {
-                        icon: "volume_up"
-                        iconSize: 19
-                        size: 34
-                        tooltip: "音量"
-                        onClicked: Nav.openVolumePanel()
+                    // 音量：点击在按钮上方弹出小滑条，不必打开一个单独面板。
+                    Item {
+                        width: 34
+                        height: 34
+
+                        IconButton {
+                            anchors.fill: parent
+                            icon: "volume_up"
+                            iconSize: 19
+                            size: 34
+                            tooltip: "音量"
+                            onClicked: volumePopup.opened ? volumePopup.close() : volumePopup.open()
+                        }
+
+                        Popup {
+                            id: volumePopup
+                            y: -80
+                            x: (parent.width - width) / 2
+                            width: 44
+                            height: 96
+                            padding: 0
+                            modal: false
+                            closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
+
+                            background: Rectangle {
+                                radius: 12
+                                color: Theme.surfaceContainerHigh
+                                border.width: 1
+                                border.color: Theme.withAlpha(Theme.outlineVariant, 0.7)
+                            }
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                NeriIcon {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    name: "volume_up"
+                                    iconSize: 14
+                                    color: Theme.primary
+                                }
+
+                                // 竖向滑条：用旋转的 Slider 实现
+                                Item {
+                                    width: 28
+                                    height: 56
+
+                                    Slider {
+                                        id: volumeSlider
+                                        anchors.centerIn: parent
+                                        width: 56
+                                        height: 28
+                                        rotation: -90
+                                        from: 0
+                                        to: 1
+                                        value: Player.volume
+                                        onMoved: Player.setVolume(value)
+                                    }
+                                }
+                            }
+                        }
                     }
                     IconButton {
                         icon: "graphic_eq"
