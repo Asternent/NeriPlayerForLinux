@@ -102,6 +102,95 @@ class GlobalShortcutsPortal(
     }
 
     /**
+     * 读取当前会话的全局快捷键绑定：actionId -> 触发器文本（未绑定为空串）。
+     *
+     * 之前界面显示的是「内置默认值」，用户关闭/修改了某个全局键后界面仍是旧值；
+     * 这里通过 portal（GlobalShortcuts v2 的 ListShortcuts）读取系统当前实际绑定。
+     * portal 不支持 / 读取失败时返回 null，界面据此隐藏全局列。
+     */
+    fun listShortcuts(): Map<String, String>? {
+        val conn = connection ?: return null
+        val session = sessionHandle ?: return null
+        if (!registered) return null
+        return runCatching {
+            val portal = conn.getRemoteObject(
+                PORTAL_BUS,
+                PORTAL_PATH,
+                GlobalShortcutsPortalInterface::class.java,
+                false,
+            )
+            val options = HashMap<String, Variant<*>>().apply {
+                put("handle_token", Variant("neriplayer_list"))
+            }
+            val handle = portal.ListShortcuts(org.freedesktop.dbus.DBusPath(session), options)
+            val payload = awaitResponse(handle.path, LIST_TIMEOUT_MS) ?: return null
+            parseShortcutList(payload)
+        }.getOrElse { error ->
+            println("[shortcut] 读取全局快捷键失败：${error.message}")
+            null
+        }
+    }
+
+    /**
+     * 解析 ListShortcuts 的 Response。
+     *
+     * 规范里 results 含 `shortcuts`(a(sa{sv})) 与 `triggers`(as)，但 KDE 的实现只在每个
+     * shortcut 的 options 里给出 `trigger_description`（本地化文案，未绑定为空数组），
+     * 因此两种形状都要兼容。
+     */
+    private fun parseShortcutList(payload: Map<String, Variant<*>?>): Map<String, String>? {
+        val entriesValue = payload["shortcuts"]?.value ?: return null
+        val entries = entriesValue as? List<*> ?: run {
+            println("[shortcut] ListShortcuts 返回的 shortcuts 类型未知：${entriesValue.javaClass.name}")
+            return null
+        }
+        val triggerFallback = (payload["triggers"]?.value as? List<*>)
+            ?.map { it?.toString().orEmpty() }
+            .orEmpty()
+        val result = LinkedHashMap<String, String>()
+        entries.forEachIndexed { index, entry ->
+            val id = shortcutEntryId(entry) ?: return@forEachIndexed
+            val fromOptions = shortcutTriggerDescription(entry).joinToString(" / ")
+            result[id] = fromOptions.ifBlank { triggerFallback.getOrElse(index) { "" } }.trim()
+        }
+        return result
+    }
+
+    private fun shortcutEntryId(entry: Any?): String? = when (entry) {
+        null -> null
+        is org.freedesktop.dbus.Struct -> entry.parameters.getOrNull(0)?.toString()
+        is Array<*> -> entry.getOrNull(0)?.toString()
+        is List<*> -> entry.getOrNull(0)?.toString()
+        is Map<*, *> -> entry["id"]?.toString()?.takeIf { it.isNotBlank() }
+        else -> null
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun shortcutTriggerDescription(entry: Any?): List<String> {
+        val options: Map<*, *> = when (entry) {
+            is org.freedesktop.dbus.Struct -> entry.parameters.getOrNull(1) as? Map<*, *> ?: return emptyList()
+            is Array<*> -> entry.getOrNull(1) as? Map<*, *> ?: return emptyList()
+            is List<*> -> entry.getOrNull(1) as? Map<*, *> ?: return emptyList()
+            is Map<*, *> -> entry
+            else -> return emptyList()
+        }
+        return when (val raw = options["trigger_description"]) {
+            null -> emptyList()
+            is Variant<*> -> stringListOf(raw.value)
+            else -> stringListOf(raw)
+        }
+    }
+
+    private fun stringListOf(raw: Any?): List<String> = when (raw) {
+        null -> emptyList()
+        is Variant<*> -> stringListOf(raw.value)
+        is String -> listOf(raw)
+        is List<*> -> raw.mapNotNull { it?.toString()?.takeIf { text -> text.isNotBlank() } }
+        is Array<*> -> raw.mapNotNull { it?.toString()?.takeIf { text -> text.isNotBlank() } }
+        else -> listOf(raw.toString())
+    }
+
+    /**
      * 注册绑定，返回是否成功。
      * [bindings] 只应包含 globalSupported 的动作；未绑定的动作仅注册条目，
      * 不携带 preferred_trigger，让它在系统快捷键列表可见但默认未绑定。
@@ -257,6 +346,9 @@ class GlobalShortcutsPortal(
         /** 绑定可能等待用户点击授权，给足时间。 */
         private const val BIND_TIMEOUT_MS = 120_000L
 
+        /** 读取当前绑定通常很快，给 5 秒兜底。 */
+        private const val LIST_TIMEOUT_MS = 5_000L
+
         /** Compose keyCode 转 xdg shortcuts spec 的键名；无法表示时返回 null。
          * 入参做低 32 位归一化，与 Compose Key 的 (keyLocation<<32)|keyCode 打包格式对齐。 */
         /** xkb 键名 → portal 接受的触发器键名（单字母统一大写，其余按 xkb 名称）。 */
@@ -296,6 +388,12 @@ private interface GlobalShortcutsPortalInterface : DBusInterface {
         parentWindow: String,
         options: Map<String, Variant<*>>,
     )
+
+    /** 读取本会话当前实际生效的快捷键（portal GlobalShortcuts v2；KDE 已实现）。 */
+    fun ListShortcuts(
+        sessionHandle: org.freedesktop.dbus.DBusPath,
+        options: Map<String, Variant<*>>,
+    ): org.freedesktop.dbus.DBusPath
 }
 
 @DBusInterfaceName("org.freedesktop.portal.Session")

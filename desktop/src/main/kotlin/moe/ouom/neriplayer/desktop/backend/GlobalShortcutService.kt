@@ -33,6 +33,9 @@ class GlobalShortcutService(
         runCatching { portal.openConfigure() }
     }
 
+    /** 读取系统当前实际生效的全局快捷键（actionId → 触发器文本）；不支持时返回 null。 */
+    fun currentGlobalBindings(): Map<String, String>? = runCatching { portal.listShortcuts() }.getOrNull()
+
     fun stop() {
         runCatching { portal.stop() }
     }
