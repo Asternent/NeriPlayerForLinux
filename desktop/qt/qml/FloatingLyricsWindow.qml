@@ -17,6 +17,18 @@ Window {
     readonly property bool enabledSetting: Settings.get("floatingLyricsEnabled", false) === true
     readonly property bool appActive: mainWindow ? mainWindow.active : false
 
+    /**
+     * 打开主窗口并跳到指定页面。
+     *
+     * 只调 Nav.push 的话，主窗口收在托盘时页面切换发生在后台，用户看不到内容，
+     * 要等窗口自己弹出来之后才「突然」停在播放页。所以先显式显示主窗口。
+     */
+    function openInMainWindow(routeName) {
+        if (win.mainWindow)
+            win.mainWindow.showMainWindow()
+        Nav.push(routeName)
+    }
+
     readonly property var lyricLines: Player.lyrics && Player.lyrics.lines ? Player.lyrics.lines : []
     readonly property int currentIndex: Player.currentLyricIndex()
     readonly property var currentLine: currentIndex >= 0 && currentIndex < lyricLines.length ? lyricLines[currentIndex] : null
@@ -393,7 +405,7 @@ Window {
             }
             onReleased: commitDrag()
             onCanceled: commitDrag()
-            onDoubleClicked: Nav.push("nowplaying")
+            onDoubleClicked: win.openInMainWindow("nowplaying")
 
             /** 拖动结束后把位置换算成屏幕比例保存。 */
             function commitDrag() {
@@ -513,7 +525,7 @@ Window {
                     size: 30
                     iconColor: Qt.rgba(1, 1, 1, 0.9)
                     tooltip: "打开播放页"
-                    onClicked: Nav.push("nowplaying")
+                    onClicked: win.openInMainWindow("nowplaying")
                 }
                 IconButton {
                     icon: "close"
