@@ -18,11 +18,12 @@ Item {
     readonly property real capsuleWidth: 132
     readonly property real capsuleHeight: 36
     readonly property real columnGap: 8
-    readonly property real rowHeight: 42
+    readonly property real rowHeight: 40
 
-    // 两列左侧起始 x，表头与每一行共用，保证列对齐。
-    readonly property real localColumnX: Math.max(0, width - capsuleWidth * 2 - columnGap)
-    readonly property real globalColumnX: Math.max(0, width - capsuleWidth)
+    // 两列左侧起始 x；右侧再留一格给「默认」重置按钮（与旧 Compose 版一致）。
+    readonly property real resetColumnWidth: 56
+    readonly property real globalColumnX: Math.max(0, width - resetColumnWidth - capsuleWidth)
+    readonly property real localColumnX: Math.max(0, globalColumnX - columnGap - capsuleWidth)
 
     width: parent ? parent.width : 0
     implicitHeight: content.height
@@ -103,16 +104,27 @@ Item {
     }
 
     function globalText(action) {
-        if (!action.globalSupported)
-            return "不支持"
         return action.globalDefault ? action.globalDefault : "未设置"
     }
 
-    function actionHint(action) {
-        if (action.systemKey)
-            return "固定键 · 不可修改"
-        return action.globalSupported ? "应用内可录制 · 支持全局快捷键"
-                                      : "应用内可录制 · 不支持全局快捷键"
+    /** 当前动作的应用内键位是否与别的动作重复；返回被占用的动作名，无冲突返回空串。 */
+    function localConflict(action) {
+        const own = root.localText(action)
+        if (!own || own === "未设置" || own === "没有绑定")
+            return ""
+        for (let i = 0; i < root.catalog.length; ++i) {
+            const other = root.catalog[i]
+            if (!other || other.id === action.id)
+                continue
+            if (root.localText(other) === own)
+                return other.label
+        }
+        return ""
+    }
+
+    /** 该动作的应用内键位是否被用户改动过（决定是否显示「默认」）。 */
+    function localChanged(action) {
+        return !action.systemKey && root.storedLocal(action.id) !== null
     }
 
     // ---------------------------------------------------------------- 键位格式化
@@ -262,6 +274,20 @@ Item {
         root.saveLocal(action.id, { key: "", ctrl: false, alt: false, shift: false, meta: false })
     }
 
+    /** 清空所有应用内覆盖项，回到内置默认键位（全局列由桌面系统管理，不动）。 */
+    function resetAllLocal() {
+        root.stopRecording()
+        const values = Settings.values || ({})
+        const current = values.shortcuts || ({})
+        const global = {}
+        if (current.global) {
+            for (const id in current.global)
+                global[id] = current.global[id]
+        }
+        Settings.patch({ shortcuts: { local: {}, global: global } })
+        Toast.show("已恢复默认快捷键", "info")
+    }
+
     // ---------------------------------------------------------------- 内容
 
     Column {
@@ -269,15 +295,22 @@ Item {
         width: root.width
         spacing: 0
 
-        // 分区操作按钮（全局快捷键由桌面系统管理，跳转系统配置界面）。
+        // 分区操作按钮（与旧 Compose 版一致：左侧恢复默认，右侧跳转系统设置）
         Item {
             width: content.width
             height: 40
 
             SettingsButton {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "恢复默认"
+                onClicked: root.resetAllLocal()
+            }
+
+            SettingsButton {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "系统设置"
+                text: "在系统设置中修改…"
                 icon: "settings"
                 onClicked: root.openGlobalSettings()
             }
@@ -419,7 +452,7 @@ Item {
                             id: rowHover
                         }
 
-                        // 动作名 + 说明
+                        // 动作名（旧版布局：默认只有一行标题，仅在冲突/固定键时才补一行提示）
                         Column {
                             x: 0
                             width: Math.max(0, root.localColumnX - 56)
@@ -433,39 +466,48 @@ Item {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 14
                                 elide: Text.ElideRight
+                                maximumLineCount: 1
                             }
 
                             Text {
                                 width: parent.width
-                                text: root.actionHint(shortcutRow.action)
-                                color: Theme.onSurfaceVariantColor
+                                // 旧版行为：只有键位冲突时才补一行错误提示，平时保持单行标题
+                                visible: text !== ""
+                                text: {
+                                    const conflict = root.localConflict(shortcutRow.action)
+                                    return conflict ? "应用内与「" + conflict + "」冲突" : ""
+                                }
+                                color: Theme.error
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
                                 elide: Text.ElideRight
+                                maximumLineCount: 1
                             }
                         }
 
-                        // 清除按钮（hover 且已覆盖默认键位时出现；右键胶囊也可清除）
+                        // 重置入口：应用内改过才出现「默认」（旧 Compose 版同一行为）
                         Item {
-                            id: clearButton
-                            width: 40
-                            height: 24
-                            x: root.localColumnX - width - Theme.spacingSm
+                            id: resetButton
+                            x: root.globalColumnX + root.capsuleWidth + Theme.spacingXs
+                            width: root.resetColumnWidth - Theme.spacingXs
+                            height: root.capsuleHeight
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: rowHover.hovered && !shortcutRow.isSystem && !shortcutRow.recording
-                                     && root.storedLocal(shortcutRow.action.id) !== null
+                            visible: root.localChanged(shortcutRow.action)
 
                             Rectangle {
-                                anchors.fill: parent
+                                anchors.centerIn: parent
+                                width: resetLabel.implicitWidth + 16
+                                height: 26
                                 radius: height / 2
-                                color: clearMouse.pressed
+                                color: resetMouse.pressed
                                        ? Theme.withAlpha(Theme.primary, 0.16)
-                                       : (clearHover.hovered ? Theme.withAlpha(Theme.primary, 0.08) : "transparent")
+                                       : (resetHover.hovered ? Theme.withAlpha(Theme.primary, 0.08) : "transparent")
                             }
 
                             Text {
+                                id: resetLabel
                                 anchors.centerIn: parent
-                                text: "清除"
+                                text: "默认"
                                 color: Theme.primary
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
@@ -473,12 +515,12 @@ Item {
                             }
 
                             HoverHandler {
-                                id: clearHover
+                                id: resetHover
                                 cursorShape: Qt.PointingHandCursor
                             }
 
                             MouseArea {
-                                id: clearMouse
+                                id: resetMouse
                                 anchors.fill: parent
                                 onClicked: root.clearLocal(shortcutRow.action)
                             }
@@ -561,20 +603,20 @@ Item {
                             width: root.capsuleWidth
                             height: root.capsuleHeight
                             radius: 10
-                            color: Theme.surfaceContainer
+                            color: shortcutRow.action.globalSupported
+                                   ? Theme.surfaceContainer : "transparent"
                             border.width: 1
-                            border.color: Theme.outlineVariant
-                            opacity: shortcutRow.action.globalSupported ? 1 : 0.55
+                            border.color: shortcutRow.action.globalSupported
+                                          ? Theme.outlineVariant : "transparent"
 
                             Text {
                                 anchors.centerIn: parent
                                 width: parent.width - 16
                                 horizontalAlignment: Text.AlignHCenter
-                                text: root.globalText(shortcutRow.action)
+                                text: shortcutRow.action.globalSupported
+                                      ? root.globalText(shortcutRow.action) : "—"
                                 elide: Text.ElideRight
-                                color: root.globalText(shortcutRow.action) === "未设置"
-                                       ? Theme.onSurfaceVariantColor
-                                       : Theme.onSurfaceColor
+                                color: Theme.onSurfaceVariantColor
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 14
                                 font.weight: Font.Medium
@@ -602,12 +644,7 @@ Item {
 
         Item {
             width: 1
-            height: 12
-        }
-
-        SettingsNote {
-            width: content.width
-            text: "「固定键」是系统基础操作，只读展示。点击「应用内」键位可录制新快捷键，按 Esc 取消，右键可清除；全局键位由桌面系统管理，点击右上角「系统设置」调整。"
+            height: 8
         }
     }
 }

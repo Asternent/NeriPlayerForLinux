@@ -114,7 +114,8 @@ QtObject {
     function playSongNow(song, queue) {
         _send("player.playSongNow", { song: song, queue: queue || null })
     }
-    function playQueueIndex(index) { _send("player.playQueueIndex", { index: index }) }
+    // 后端注册的方法是 player.playAt（见 backend/api/PlayerApi.kt）。
+    function playQueueIndex(index) { _send("player.playAt", { index: index }) }
     function enqueue(songs) { _send("player.enqueue", { songs: songs }) }
     function enqueueNext(songs) { _send("player.enqueueNext", { songs: songs }) }
     function removeFromQueue(index) { _send("player.removeFromQueue", { index: index }) }

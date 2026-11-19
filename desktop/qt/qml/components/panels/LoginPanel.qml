@@ -79,7 +79,11 @@ PanelShell {
     }
 
     property var _onAccountsChanged: function(list) {
-        // C++ 桥会把事件 data 统一转成对象，数组事件（accounts.changed）拿不到内容，直接重新查询
+        // Qt 桥现在直接下发真正的 JS 数组，可直接用于刷新账号态；
+        // 仍然查一次拿最新的完整字段，避免事件负载被裁剪。
+        const payload = panel.toArray(list)
+        if (payload.length > 0)
+            panel.accounts = payload
         panel.loadAccounts().then(function() {
             if (!panel.loggedIn && panel.qrState === "idle" && panel.visible)
                 panel.startQr()
@@ -217,6 +221,19 @@ PanelShell {
             panel._loggingOut = false
             panel.confirmLogout = false
             Toast.show("退出登录失败：" + panel.messageOf(error), "error")
+        })
+    }
+
+    // ---------------------------------------------------------------- 账号信息刷新
+
+    function refreshProfile() {
+        Api.call("login.refreshProfile", { source: panel.source }).then(function(result) {
+            if (result && result.account)
+                panel.upsertAccount(result.account)
+            panel.loadAccounts()
+            Toast.show("账号信息已刷新", "info")
+        }).catch(function(error) {
+            Toast.show("刷新失败：" + panel.messageOf(error), "error")
         })
     }
 
@@ -559,13 +576,18 @@ PanelShell {
                     }
                 }
 
-                Item {
+                Row {
                     width: parent.width
-                    height: 40
+                    spacing: 8
+                    visible: !panel.confirmLogout
 
                     PanelButton {
-                        anchors.centerIn: parent
-                        visible: !panel.confirmLogout
+                        text: "刷新账号信息"
+                        outlined: true
+                        onClicked: panel.refreshProfile()
+                    }
+
+                    PanelButton {
                         text: "退出登录"
                         outlined: true
                         onClicked: panel.confirmLogout = true

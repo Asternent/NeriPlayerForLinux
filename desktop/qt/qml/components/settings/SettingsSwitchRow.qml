@@ -102,6 +102,7 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
+                enabled: root.enabled
                 onClicked: root.toggled(!root.checked)
             }
         }

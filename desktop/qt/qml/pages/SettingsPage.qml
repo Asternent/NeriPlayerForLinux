@@ -9,6 +9,9 @@ import "../components/settings"
 Item {
     id: page
 
+    // 与其它页面一致的宽窄布局判定（设置页只需用于信息展示）。
+    readonly property bool wide: width >= Theme.wideBreakpoint
+
     // ---------------------------------------------------------------- 常量表
 
     readonly property var presetSeedColors: [
@@ -103,6 +106,7 @@ Item {
     property int scanProcessed: 0
     property int scanFound: 0
     property string scanError: ""
+    property bool clearingCache: false
 
     property var _onScan: null
     property var _onLibraryChanged: null
@@ -147,8 +151,40 @@ Item {
         Settings.set(key, value)
     }
 
+    /** 界面缩放：设置值 <= 0 表示跟随系统，这里换算成实际百分比文案。 */
+    function effectiveScaleText() {
+        const value = Number(page.sv("uiScale", 0))
+        if (!(value > 0))
+            return Math.round((screen ? screen.devicePixelRatio : 1) * 100) + "% · 跟随系统"
+        return Math.round(value * 100) + "% · 设置中手动指定"
+    }
+
+    function screenText() {
+        if (!screen)
+            return "未知"
+        return Math.round(screen.width) + "×" + Math.round(screen.height) + " 像素"
+    }
+
     function patchSettings(changes) {
         Settings.patch(changes)
+    }
+
+    /** 读取首页栏目开关（Settings.homeCards 的嵌套字段）。 */
+    function homeCardEnabled(key, fallback) {
+        const cards = page.sv("homeCards", null)
+        if (!cards)
+            return fallback !== false
+        return cards[key] !== false
+    }
+
+    /** 写入首页栏目开关：后端只认整个 homeCards 对象，需整体 patch。 */
+    function setHomeCard(key, value) {
+        const cards = page.sv("homeCards", null) || {}
+        const next = {}
+        for (const name in cards)
+            next[name] = cards[name]
+        next[key] = value
+        page.patchSettings({ "homeCards": next })
     }
 
     function sanitizeHex(text) {
@@ -278,6 +314,19 @@ Item {
         })
     }
 
+    /** 清空本机封面缓存（后端 artwork.clearCache）。 */
+    function clearArtworkCache() {
+        page.clearingCache = true
+        Api.call("artwork.clearCache").then(function(result) {
+            page.clearingCache = false
+            const removed = result && result.removed !== undefined ? Number(result.removed) : 0
+            Toast.show("已清除 " + removed + " 个封面缓存文件", "info")
+        }).catch(function(error) {
+            page.clearingCache = false
+            Toast.show("清除缓存失败：" + (error && error.message ? error.message : "未知错误"), "error")
+        })
+    }
+
     // ---------------------------------------------------------------- 下载
 
     function chooseDownloadFolder() {
@@ -291,7 +340,13 @@ Item {
     // ---------------------------------------------------------------- 账号
 
     function applyAccounts(list) {
-        page.accounts = Array.isArray(list) ? list : []
+        // C++ 桥现在会下发真正的 JS 数组；同时兼容旧式 QVariantList 序列对象。
+        const result = []
+        if (!list)
+            return void (page.accounts = result)
+        for (let i = 0; i < list.length; ++i)
+            result.push(list[i])
+        page.accounts = result
     }
 
     function findAccount(source) {
@@ -425,6 +480,24 @@ Item {
         }).catch(function(error) {
             page.syncBusy = false
             page.handleSyncError(error, "同步失败")
+        })
+    }
+
+    /** 断开同步：清掉本地保存的仓库配置与 Token。 */
+    function disableSync() {
+        if (page.syncUnsupported) {
+            Toast.show("后端暂不支持同步命令", "error")
+            return
+        }
+        page.syncBusy = true
+        Api.call("sync.disable").then(function() {
+            page.syncBusy = false
+            page.syncStatusMessage = ""
+            Toast.show("已断开同步", "info")
+            page.loadSyncConfig()
+        }).catch(function(error) {
+            page.syncBusy = false
+            page.handleSyncError(error, "断开同步失败")
         })
     }
 
@@ -595,6 +668,7 @@ Item {
     // ---------------------------------------------------------------- 页面骨架
 
     Flickable {
+        WheelFlickHandler { }
         id: flick
         anchors.fill: parent
         contentWidth: width
@@ -828,6 +902,30 @@ Item {
                     width: parent.width
                     text: "界面立即按比例缩放，窗口尺寸在下次启动时生效。桌面本身已开启缩放时（例如 KDE 200%），可在此手动指定。"
                 }
+
+                Item {
+                    width: 1
+                    height: 6
+                }
+
+                // 与旧 Compose 版一致：展示当前实际生效的缩放/布局/屏幕信息
+                SettingsInfoRow {
+                    width: parent.width
+                    label: "当前生效"
+                    value: page.effectiveScaleText()
+                }
+
+                SettingsInfoRow {
+                    width: parent.width
+                    label: "布局"
+                    value: wide ? "横屏（宽窗口，内容铺满 + 多栏）" : "紧凑（窄窗口，单栏）"
+                }
+
+                SettingsInfoRow {
+                    width: parent.width
+                    label: "屏幕"
+                    value: page.screenText()
+                }
             }
 
             // ============================================================ 媒体库
@@ -866,6 +964,23 @@ Item {
                     font.pixelSize: 12
                     font.weight: Font.Medium
                     wrapMode: Text.Wrap
+                }
+
+                Item {
+                    width: 1
+                    height: 8
+                }
+
+                SettingsRow {
+                    width: parent.width
+                    title: "封面缓存"
+                    description: "在线歌曲封面会缓存在本机，占用空间异常时可清空"
+
+                    SettingsButton {
+                        text: page.clearingCache ? "清理中…" : "清除缓存"
+                        enabled: !page.clearingCache
+                        onClicked: page.clearArtworkCache()
+                    }
                 }
             }
 
@@ -1248,7 +1363,104 @@ Item {
 
                 SettingsNote {
                     width: parent.width
-                    text: "悬浮歌词窗口尚未在 Qt 前端实现，这里的设置会保存到后端，待悬浮窗接入后生效。"
+                    text: "悬浮歌词是独立的桌面窗口；未锁定时可直接拖动，锁定时鼠标穿透（Ctrl+Alt+L 解锁）。"
+                }
+            }
+
+            // ============================================================ 歌词与显示
+            SettingsSection {
+                width: parent.width - 24
+                x: 12
+                title: "歌词与显示"
+                description: "歌词翻译、封面歌词与字号"
+                icon: "subtitles"
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "显示歌词翻译"
+                    description: "在线歌词包含翻译时同时显示"
+                    checked: page.sb("showLyricTranslation", true)
+                    onToggled: function(checked) { page.setSetting("showLyricTranslation", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "封面页显示歌词"
+                    description: "在播放页封面下方显示逐行歌词"
+                    checked: page.sb("coverShowsLyrics", true)
+                    onToggled: function(checked) { page.setSetting("coverShowsLyrics", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "显示“正在播放”标题"
+                    description: "控制播放页顶部是否显示标题"
+                    checked: page.sb("showNowPlayingTitle", true)
+                    onToggled: function(checked) { page.setSetting("showNowPlayingTitle", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "滚动显示长歌曲名"
+                    description: "标题超出宽度时平滑滚动"
+                    checked: page.sb("songTitleMarquee", true)
+                    onToggled: function(checked) { page.setSetting("songTitleMarquee", checked) }
+                }
+
+                Item {
+                    width: 1
+                    height: 4
+                }
+
+                SliderRow {
+                    width: parent.width
+                    label: "歌词字号 " + Number(page.sv("lyricsFontScale", 1.0)).toFixed(2) + "x"
+                    from: 0.7
+                    to: 1.8
+                    decimals: 2
+                    externalValue: Number(page.sv("lyricsFontScale", 1.0))
+                    onCommitted: function(value) { page.setSetting("lyricsFontScale", value) }
+                }
+            }
+
+            // ============================================================ 首页栏目
+            SettingsSection {
+                width: parent.width - 24
+                x: 12
+                title: "首页栏目"
+                description: "选择首页展示哪些推荐栏目"
+                icon: "dashboard"
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "继续播放"
+                    description: "最近播放的歌曲"
+                    checked: page.homeCardEnabled("continuePlaying", true)
+                    onToggled: function(checked) { page.setHomeCard("continuePlaying", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "为你推荐"
+                    description: "根据口味生成的推荐歌单"
+                    checked: page.homeCardEnabled("recommended", true)
+                    onToggled: function(checked) { page.setHomeCard("recommended", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "热歌榜"
+                    description: "热门歌曲榜单"
+                    checked: page.homeCardEnabled("hotTracks", true)
+                    onToggled: function(checked) { page.setHomeCard("hotTracks", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "私人雷达"
+                    description: "个性化探索"
+                    checked: page.homeCardEnabled("radar", true)
+                    onToggled: function(checked) { page.setHomeCard("radar", checked) }
                 }
             }
 
@@ -1318,6 +1530,40 @@ Item {
                 SettingsNote {
                     width: parent.width
                     text: "托盘与 MPRIS 需要桌面环境提供系统托盘 / D-Bus 会话总线；无托盘的极简桌面下关闭窗口将直接退出。"
+                }
+            }
+
+            // ============================================================ 在线音源
+            SettingsSection {
+                width: parent.width - 24
+                x: 12
+                title: "在线音源"
+                description: "网易云、哔哩哔哩与 YouTube 开关"
+                icon: "cloud"
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "网易云音乐"
+                    description: "搜索、推荐、播放与歌词（无需登录即可使用公开接口）"
+                    checked: page.sb("neteaseEnabled", true)
+                    onToggled: function(checked) { page.setSetting("neteaseEnabled", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "哔哩哔哩"
+                    description: "视频搜索与音频轨道播放"
+                    checked: page.sb("bilibiliEnabled", true)
+                    onToggled: function(checked) { page.setSetting("bilibiliEnabled", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "YouTube Music"
+                    description: "桌面端暂未接入（需要账号授权与专用解析）"
+                    checked: false
+                    enabled: false
+                    onToggled: function(checked) {}
                 }
             }
 
@@ -1404,6 +1650,12 @@ Item {
                         text: page.syncBusy ? "处理中…" : "立即同步"
                         enabled: !page.syncBusy && !page.syncUnsupported
                         onClicked: page.performSync()
+                    }
+
+                    SettingsButton {
+                        text: "断开同步"
+                        enabled: !page.syncBusy && page.syncConfigured
+                        onClicked: page.disableSync()
                     }
                 }
 

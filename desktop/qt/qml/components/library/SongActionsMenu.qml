@@ -37,6 +37,25 @@ Menu {
     width: 240
     padding: Theme.spacingXs
 
+    /** 把当前歌曲加入下载队列（后端 download.enqueue，进度见下载面板）。 */
+    function enqueueDownload() {
+        const target = root.song
+        if (!target)
+            return
+        Api.call("download.enqueue", { songs: [target] }).then(function(result) {
+            const queued = result && result.queued !== undefined ? Number(result.queued) : 0
+            if (result && result.message) {
+                Toast.show(String(result.message), "error")
+            } else if (queued > 0) {
+                Toast.show("已加入下载队列：" + (target.title || "歌曲"), "info")
+            } else {
+                Toast.show("未能加入下载队列", "error")
+            }
+        }).catch(function(error) {
+            Toast.show("下载失败：" + (error && error.message ? error.message : "未知错误"), "error")
+        })
+    }
+
     /** 打开菜单；options 可含 playlistId / showMove / anchor（用于定位）。 */
     function openFor(song, options) {
         if (!song)
@@ -142,7 +161,7 @@ Menu {
 
     ActionItem {
         text: "下载"
-        onTriggered: Toast.show("下载面板迁移中")
+        onTriggered: root.enqueueDownload()
     }
 
     Divider {
