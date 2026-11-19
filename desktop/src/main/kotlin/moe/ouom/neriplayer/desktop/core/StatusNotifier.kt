@@ -89,27 +89,46 @@ class StatusNotifierService(
     /** 启动托盘桥接；桌面不支持或缺少 python3-gi 时返回 false（调用方回退到 AWT 托盘）。 */
     fun start(): Boolean {
         if (running) return true
-        return runCatching {
-            if (!pythonBridgeAvailable()) {
-                println("[tray] 未找到 python3-gi，回退到 AWT 托盘图标")
-                return@runCatching false
-            }
-            val conn = DBusConnectionBuilder.forSessionBus().build()
-            val app = ExportedTrayApp()
-            conn.exportObject(TRAY_APP_OBJECT_PATH, app)
-            conn.requestBusName(TRAY_APP_BUS_NAME)
-            connection = conn
-            exported = app
-            if (!spawnBridge()) {
-                stop()
-                return@runCatching false
-            }
-            true
-        }.getOrElse { error ->
-            println("[tray] 托盘桥接启动失败（回退到 AWT 托盘）：${error.message}")
-            stop()
-            false
+        if (!pythonBridgeAvailable()) {
+            println("[tray] 未找到 python3-gi，回退到 AWT 托盘图标")
+            return false
         }
+        // dbus-java 5.x 偶发在进程刚起来时建立的连接还没完成握手，requestBusName 内部的
+        // dbus 代理为 null。此时连接本身是可用的，只需要稍后重试申请总线名——
+        // 不要重试 exportObject（同一连接重复导出会报 "Object already exported"）。
+        var conn: DBusConnection? = null
+        val app = ExportedTrayApp()
+        val created = runCatching {
+            val built = DBusConnectionBuilder.forSessionBus().build()
+            built.exportObject(TRAY_APP_OBJECT_PATH, app)
+            conn = built
+        }
+        if (created.isFailure) {
+            println("[tray] 托盘桥接启动失败（回退到 AWT 托盘）：${created.exceptionOrNull()?.message}")
+            runCatching { conn?.disconnect() }
+            return false
+        }
+
+        var lastError: Throwable? = null
+        for (attempt in 1..5) {
+            val requested = runCatching { conn!!.requestBusName(TRAY_APP_BUS_NAME) }
+            if (requested.isSuccess) {
+                connection = conn
+                exported = app
+                return if (spawnBridge()) {
+                    true
+                } else {
+                    stop()
+                    false
+                }
+            }
+            lastError = requested.exceptionOrNull()
+            if (attempt < 5)
+                Thread.sleep(200L * attempt)
+        }
+        println("[tray] 托盘桥接启动失败（回退到 AWT 托盘）：${lastError?.message}")
+        runCatching { conn?.disconnect() }
+        return false
     }
 
     fun stop() {

@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+import time
 
 import gi
 
@@ -325,9 +326,18 @@ class TrayBridge:
 
         # 用「对象路径」形式注册：桌面会用本连接的唯一名 + 该路径查询指示器，
         # 不需要等 well-known name 抢到手（避免注册时名字还没生效）。
-        Gio.bus_own_name(
-            Gio.BusType.SESSION, self.service_name, Gio.BusNameOwnerFlags.NONE,
-            None, None, None)
+        #
+        # 关键：必须在 self.connection 上申请名字。Gio.bus_own_name 会新建一条独立连接
+        # 来持有名字，导致「名字属于连接 A、对象导出在连接 B」，watcher 用名字去查
+        # /StatusNotifierItem 时找不到对象 —— 表现为托盘图标不出现。
+        try:
+            self.connection.call_sync(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "RequestName",
+                GLib.Variant("(su)", (self.service_name, 0)), None,
+                Gio.DBusCallFlags.NONE, 3000, None)
+        except Exception as error:
+            log(f"申请托盘总线名失败: {error}")
 
         sni_info = Gio.DBusNodeInfo.new_for_xml(SNI_XML)
         self.connection.register_object(ITEM_PATH, sni_info.interfaces[0], self.on_sni_call, None, None)
@@ -336,16 +346,64 @@ class TrayBridge:
 
         self._refresh_items()
 
-        try:
-            self.connection.call_sync(
-                "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
-                "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierItem",
-                GLib.Variant("(s)", (ITEM_PATH,)), None,
-                Gio.DBusCallFlags.NONE, 3000, None)
+        # 注册到 StatusNotifierWatcher。
+        #
+        # 注意：RegisterStatusNotifierItem 返回成功并不代表真的注册上了 —— Plasma 的
+        # host 有时还没准备好，调用会被接受但 item 不出现在 RegisteredStatusNotifierItems
+        # 里，表现为「托盘区看不到图标」（用户会以为程序变成纯后台）。
+        # 因此注册后要回读列表确认，没成功就重试；并且监听 host 重新上线时补注册。
+        def register_item():
+            try:
+                self.connection.call_sync(
+                    "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+                    "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierItem",
+                    GLib.Variant("(s)", (self.service_name,)), None,
+                    Gio.DBusCallFlags.NONE, 3000, None)
+            except Exception as error:
+                log(f"注册状态栏指示器失败: {error}")
+                return False
+
+            # 回读 watcher 列表确认注册生效
+            try:
+                result = self.connection.call_sync(
+                    "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+                    "org.freedesktop.DBus.Properties", "Get",
+                    GLib.Variant("(ss)", ("org.kde.StatusNotifierWatcher",
+                                          "RegisteredStatusNotifierItems")),
+                    GLib.VariantType("(v)"), Gio.DBusCallFlags.NONE, 3000, None)
+                items = result.unpack()[0]
+                return any(self.service_name in str(item) for item in items)
+            except Exception:
+                # 读不到列表时不阻塞启动，按成功处理（老版本 watcher 可能没有该属性）
+                return True
+
+        registered = False
+        for attempt in range(5):
+            if register_item():
+                registered = True
+                break
+            time.sleep(0.4 * (attempt + 1))
+
+        if registered:
             log(f"已注册托盘指示器 {self.service_name}（菜单项 {len(self.items)} 个）")
-        except Exception as error:
-            log(f"注册状态栏指示器失败: {error}")
-            return 1
+        else:
+            log(f"托盘指示器 {self.service_name} 暂未注册成功，等待 host 就绪后重试")
+
+        # host（Plasma 面板）重启后会丢失注册，这里监听后补注册
+        def on_watcher_owner_changed(_conn, _sender, _path, _iface, _signal, params):
+            name, _old, new = params.unpack()
+            if name == "org.kde.StatusNotifierWatcher" and new:
+                self.connection.call_sync(
+                    "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+                    "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierItem",
+                    GLib.Variant("(s)", (self.service_name,)), None,
+                    Gio.DBusCallFlags.NONE, 3000, None)
+                log("StatusNotifierWatcher 重新出现，已重新注册托盘指示器")
+
+        self.connection.signal_subscribe(
+            "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+            "/org/freedesktop/DBus", None, Gio.DBusSignalFlags.NONE,
+            on_watcher_owner_changed)
 
         loop = GLib.MainLoop()
 
