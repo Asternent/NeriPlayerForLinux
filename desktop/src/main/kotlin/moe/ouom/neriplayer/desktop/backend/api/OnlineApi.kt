@@ -2,7 +2,6 @@ package moe.ouom.neriplayer.desktop.backend.api
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -28,7 +27,7 @@ import moe.ouom.neriplayer.desktop.core.SearchPayload
 import moe.ouom.neriplayer.desktop.core.Song
 import moe.ouom.neriplayer.desktop.net.DESKTOP_USER_AGENT
 import moe.ouom.neriplayer.desktop.net.NeriJsonParser
-import moe.ouom.neriplayer.desktop.net.NeteaseHomeData
+import moe.ouom.neriplayer.desktop.net.HomeSections
 import moe.ouom.neriplayer.desktop.net.array
 import moe.ouom.neriplayer.desktop.net.asObject
 import moe.ouom.neriplayer.desktop.net.int
@@ -65,33 +64,14 @@ object OnlineApi {
         val online = container.online
 
         // ---------------------------------------------------------------- 首页聚合
-        server.on("online.home") {
-            val settings = container.settings.current
-            val errors = mutableListOf<String>()
-            val continuePlaying = container.history.entries.value.take(12).map { it.song }
-            var data = NeteaseHomeData()
-            if (!settings.neteaseEnabled) {
-                errors += "网易云音源已在设置中禁用"
-            } else {
-                val loaded = runCatching { withContext(Dispatchers.IO) { online.neteaseHome() } }
-                loaded.onFailure { error ->
-                    log("online.home failed: ${error::class.simpleName}: ${error.message}")
-                    errors += "首页推荐加载失败：${error.message ?: error.javaClass.simpleName}"
-                }
-                loaded.onSuccess { home ->
-                    data = home
-                    home.error?.takeIf { it.isNotBlank() }?.let { errors += "首页推荐加载失败：$it" }
-                }
+        server.on("online.home") { params ->
+            // 首页聚合请求量大，HomeSections 内部有短 TTL 缓存；下拉刷新用 refresh=true 强制重取。
+            val force = (params["refresh"] as? kotlinx.serialization.json.JsonPrimitive)
+                ?.content?.toBooleanStrictOrNull() ?: false
+            val payload = withContext(Dispatchers.IO) {
+                HomeSections.load(container, force = force)
             }
-            homePayload(
-                continuePlaying = continuePlaying,
-                guessYouLike = data.recommendedSongs,
-                hotTracks = data.topSongs,
-                newSongs = data.newSongs,
-                radar = data.radarPlaylists,
-                hotLists = data.hotPlaylists,
-                errors = errors,
-            )
+            encodeJson(payload)
         }
 
         // ---------------------------------------------------------------- 搜索
@@ -386,56 +366,6 @@ object OnlineApi {
                 put("ffmpeg", FfmpegSupport.available)
             }
         }
-    }
-
-    // ------------------------------------------------------------------ 首页载荷
-
-    /**
-     * 首页聚合。每个区块统一成 `{songs:[Song]}` 或 `{collections:[OnlineCollection]}`，
-     * 同时用 `sections` 数组给出有序的展示列表；任一子项失败只会进 `errors`，不会让整个命令失败。
-     */
-    private fun homePayload(
-        continuePlaying: List<Song>,
-        guessYouLike: List<Song>,
-        hotTracks: List<Song>,
-        newSongs: List<Song>,
-        radar: List<OnlineCollection>,
-        hotLists: List<OnlineCollection>,
-        errors: List<String>,
-    ): JsonObject = buildJsonObject {
-        put("continuePlaying", songsSection(continuePlaying))
-        put("guessYouLike", songsSection(guessYouLike))
-        put("hotTracks", songsSection(hotTracks))
-        put("newSongs", songsSection(newSongs))
-        put("radar", collectionsSection(radar))
-        put("hotLists", collectionsSection(hotLists))
-        put("sections", buildJsonArray {
-            if (continuePlaying.isNotEmpty()) {
-                add(sectionObject("continuePlaying", "继续播放", songsSection(continuePlaying)))
-            }
-            add(sectionObject("guessYouLike", "为你推荐", songsSection(guessYouLike)))
-            add(sectionObject("hotTracks", "热歌榜", songsSection(hotTracks)))
-            add(sectionObject("newSongs", "推荐新歌", songsSection(newSongs)))
-            add(sectionObject("radar", "私人雷达", collectionsSection(radar)))
-            add(sectionObject("hotLists", "热门榜单", collectionsSection(hotLists)))
-        })
-        put("errors", encodeAny(errors))
-    }
-
-    private fun songsSection(songs: List<Song>): JsonObject = buildJsonObject {
-        put("songs", encodeJson(songs))
-    }
-
-    private fun collectionsSection(collections: List<OnlineCollection>): JsonObject = buildJsonObject {
-        put("collections", encodeJson(collections))
-    }
-
-    private fun sectionObject(id: String, title: String, body: JsonObject): JsonObject = buildJsonObject {
-        put("id", id)
-        put("title", title)
-        put("kind", if (body.containsKey("songs")) "songs" else "collections")
-        put("songs", body["songs"] ?: JsonNull)
-        put("collections", body["collections"] ?: JsonNull)
     }
 
     private fun searchPayloadJson(payload: SearchPayload): JsonObject = buildJsonObject {

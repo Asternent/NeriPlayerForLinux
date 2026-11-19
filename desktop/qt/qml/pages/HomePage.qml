@@ -1,13 +1,15 @@
 import QtQuick
+import ".."
 import "../components"
 import "../components/home"
 import "../components/library"
 
-// 首页：LargeTopAppBar 风格大标题 + 栏目列表。
+// 首页：LargeTopAppBar 风格大标题 + 栏目化推荐列表。
 // 数据来源：
-//   - online.home 一次返回在线聚合（guessYouLike/hotTracks/newSongs/radar/hotLists/sections/errors）；
+//   - online.home 一次返回后端排好序的 sections（songs / collections / groups 三种 kind）；
 //   - history.continuePlaying 单独拿本地最新播放历史（在线聚合里的同名字段只作兜底）。
-// 栏目顺序以后端 sections 为准，前端只按 Settings.homeCards 开关过滤；空区块整栏隐藏。
+// 栏目只按后端顺序渲染：空栏目后端不会下发；未登录的登录专属栏目也不下发，
+// 只在 errors 里留一条「登录后解锁」提示，由页面渲染成温和的登录引导卡。
 Item {
     id: page
 
@@ -29,24 +31,62 @@ Item {
     readonly property var sections: page.buildSections()
     readonly property bool hasContent: sections.length > 0
     readonly property bool showEmpty: loadedOnce && !loading && !hasContent
+    readonly property bool loggedIn: homeData ? homeData.loggedIn === true : false
+    /** 未登录时后端把这些栏目的说明放进 errors，页面单独渲染登录引导卡而不是错误卡。 */
+    readonly property var loginErrors: {
+        const result = []
+        for (let i = 0; i < homeErrors.length; i++) {
+            if (String(homeErrors[i]).indexOf("登录") === 0)
+                result.push(homeErrors[i])
+        }
+        return result
+    }
+    readonly property var loadErrors: {
+        const result = []
+        for (let i = 0; i < homeErrors.length; i++) {
+            if (String(homeErrors[i]).indexOf("登录") !== 0)
+                result.push(homeErrors[i])
+        }
+        return result
+    }
+    readonly property bool showErrorCard: loadError !== "" || loadErrors.length > 0
+    readonly property bool showLoginHint: !loggedIn && loginErrors.length > 0
+    readonly property bool youtubeEnabled: Settings.values ? Settings.values.youtubeEnabled === true : false
 
     property var _eventHandlers: []
+    /** 上次请求时的音源开关，用于在设置变化时强制重取。 */
+    property string _sourceFlags: ""
+    /** 请求序号：只接受最后一次请求的结果，避免并发刷新时旧响应覆盖新数据。 */
+    property int _loadSeq: 0
 
     // ------------------------------------------------------------------ 数据加载
 
-    function reload() {
+    /** @param force 忽略后端短缓存（下拉刷新 / 登录态变化 / 音源开关变化）。 */
+    function reload(force) {
         if (!Api.connected) {
-            // 后端还没连上：等 connected 事件再加载，避免误报「后端未连接」
+            // 后端还没连上：不发起请求，等 connected 变化后自动重载；已有内容时保留，
+            // 首次加载则给出错误卡，避免一直转圈。
+            if (!loadedOnce) {
+                loading = false
+                loadedOnce = true
+            }
+            if (loadError === "")
+                loadError = "后端未连接"
             return
         }
+        const seq = ++page._loadSeq
         refreshing = true
         refreshStartedAt = Date.now()
         if (!loadedOnce)
             loading = true
         loadError = ""
+        loadTimeout.restart()
         refreshContinuePlaying()
 
-        Api.call("online.home").then(function(result) {
+        Api.call("online.home", force ? { "refresh": true } : {}).then(function(result) {
+            if (seq !== page._loadSeq)
+                return
+            loadTimeout.stop()
             homeData = result || null
             homeErrors = (result && result.errors) ? result.errors : []
             // 兜底：history.continuePlaying 不可用时用聚合结果里的继续播放
@@ -55,11 +95,29 @@ Item {
                 continueSongs = result.continuePlaying.songs
             finishLoad()
         }).catch(function(error) {
+            if (seq !== page._loadSeq)
+                return
+            loadTimeout.stop()
             homeData = null
             homeErrors = []
             loadError = (error && error.message) ? error.message : "无法连接在线推荐服务"
             finishLoad()
         })
+    }
+
+    /** 请求兜底超时：网络卡住时也要结束加载态并给出可点击重试的错误卡。 */
+    property Timer loadTimeout: Timer {
+        interval: 25000
+        repeat: false
+        onTriggered: {
+            if (!page.loading && !page.refreshing)
+                return
+            ++page._loadSeq
+            page.homeData = null
+            page.homeErrors = []
+            page.loadError = "加载超时，请检查网络后重试"
+            page.finishLoad()
+        }
     }
 
     /** 刷新开始时间，用于保证指示器至少显示一小段时间。 */
@@ -70,10 +128,12 @@ Item {
         loadedOnce = true
         const elapsed = Date.now() - refreshStartedAt
         const remain = Math.max(0, 900 - elapsed)
-        if (remain > 0)
-            refreshDoneTimer.start(remain)
-        else
+        if (remain > 0) {
+            refreshDoneTimer.interval = remain
+            refreshDoneTimer.start()
+        } else {
             refreshing = false
+        }
     }
 
     property Timer refreshDoneTimer: Timer {
@@ -89,9 +149,19 @@ Item {
         })
     }
 
+    function currentSourceFlags() {
+        if (!Settings.values)
+            return ""
+        return String(Settings.values.neteaseEnabled) + "/" + String(Settings.values.bilibiliEnabled)
+    }
+
     // ------------------------------------------------------------------ 栏目构建
 
-    /** 首页栏目开关（Settings.homeCards；旧设置里「为你推荐」叫 recommended）。 */
+    /**
+     * 首页栏目开关（Settings.homeCards）。
+     * 新字段为 dailyRecommend / privateFm / biliMusic / ranks / newSongs / playlists；
+     * 旧配置里的 hotTracks / recommended 继续生效（ranks 与 hotTracks、playlists 与 recommended 同时成立才显示）。
+     */
     function cardEnabled(id) {
         const cards = Settings.values ? Settings.values.homeCards : undefined
         if (!cards)
@@ -100,11 +170,27 @@ Item {
         case "continuePlaying":
             return cards.continuePlaying !== false
         case "guessYouLike":
-            return cards.recommended !== false
-        case "hotTracks":
-            return cards.hotTracks !== false
+            // 同时兼容旧字段 recommended 与新字段 guessYouLike
+            return cards.guessYouLike !== false && cards.recommended !== false
+        case "ranks":
+            return cards.ranks !== false && cards.hotTracks !== false
+        case "playlists":
+            return cards.playlists !== false && cards.recommended !== false
         case "radar":
             return cards.radar !== false
+        case "dailyRecommend":
+            return cards.dailyRecommend !== false
+        case "privateFm":
+            return cards.privateFm !== false
+        case "biliMusic":
+            return cards.biliMusic !== false
+        case "newSongs":
+            return cards.newSongs !== false
+        // 旧后端兜底字段（没有 sections 时按兼容字段拼栏目）
+        case "hotTracks":
+            return cards.hotTracks !== false
+        case "hotLists":
+            return cards.recommended !== false
         default:
             return true
         }
@@ -115,15 +201,21 @@ Item {
         case "continuePlaying":
             return "history"
         case "guessYouLike":
-            return "recommend"
-        case "hotTracks":
-            return "local_fire_department"
-        case "newSongs":
             return "auto_awesome"
         case "radar":
-            return "radio"
-        case "hotLists":
-            return "queue_music"
+            return "radar"
+        case "dailyRecommend":
+            return "today"
+        case "privateFm":
+            return "headphones"
+        case "biliMusic":
+            return "smart_display"
+        case "ranks":
+            return "leaderboard"
+        case "newSongs":
+            return "new_releases"
+        case "playlists":
+            return "playlist_play"
         default:
             return "library_music"
         }
@@ -133,21 +225,46 @@ Item {
         if (fallback && fallback !== "")
             return fallback
         switch (id) {
-        case "continuePlaying":
-            return "继续播放"
         case "guessYouLike":
-            return "为你推荐"
-        case "hotTracks":
-            return "热歌榜"
+            return "猜你喜欢"
+        case "radar":
+            return "雷达歌单"
+        case "dailyRecommend":
+            return "每日推荐"
+        case "privateFm":
+            return "私人 FM"
+        case "biliMusic":
+            return "B站音乐"
+        case "ranks":
+            return "排行榜"
         case "newSongs":
             return "推荐新歌"
-        case "radar":
-            return "私人雷达"
-        case "hotLists":
-            return "热门榜单"
+        case "playlists":
+            return "推荐歌单"
         default:
             return "推荐"
         }
+    }
+
+    /** 栏目内容数量：groups 取所有 tab 之和。 */
+    function sectionItemCount(section) {
+        if (!section)
+            return 0
+        if (section.kind === "groups") {
+            let total = 0
+            const groups = section.groups || []
+            for (let i = 0; i < groups.length; i++) {
+                const group = groups[i]
+                if (!group)
+                    continue
+                total += (group.songs ? group.songs.length : 0)
+                total += (group.collections ? group.collections.length : 0)
+            }
+            return total
+        }
+        if (section.kind === "collections")
+            return section.collections ? section.collections.length : 0
+        return section.songs ? section.songs.length : 0
     }
 
     function buildSections() {
@@ -162,7 +279,7 @@ Item {
                 "icon": "history",
                 "kind": "continue",
                 "items": history,
-                "actionText": "最近播放"
+                "groups": []
             })
         }
 
@@ -170,16 +287,16 @@ Item {
         if (!data)
             return result
 
-        // 后端 sections 已排好序；缺失时回退到各区块字段
         let rawSections = data.sections
         if (!rawSections || rawSections.length === 0) {
+            // 兜底：后端没有 sections（旧后端）时按兼容字段拼一遍
             rawSections = []
             const fallback = [
-                ["guessYouLike", "为你推荐"],
-                ["hotTracks", "热歌榜"],
-                ["newSongs", "推荐新歌"],
-                ["radar", "私人雷达"],
-                ["hotLists", "热门榜单"]
+                ["guessYouLike", "猜你喜欢", "songs"],
+                ["hotTracks", "热歌榜", "songs"],
+                ["newSongs", "推荐新歌", "songs"],
+                ["radar", "雷达歌单", "collections"],
+                ["hotLists", "热门榜单", "collections"]
             ]
             for (let i = 0; i < fallback.length; i++) {
                 const entry = data[fallback[i][0]]
@@ -188,7 +305,7 @@ Item {
                 rawSections.push({
                     "id": fallback[i][0],
                     "title": fallback[i][1],
-                    "kind": entry.collections !== undefined ? "collections" : "songs",
+                    "kind": fallback[i][2],
                     "songs": entry.songs,
                     "collections": entry.collections
                 })
@@ -205,19 +322,18 @@ Item {
                 continue
             if (!page.cardEnabled(id))
                 continue
-            // 热歌榜用竖向列表卡（旧 Compose 的 SongListCard 形态），其余歌曲栏目用横向卡片
-            const kind = id === "hotTracks" ? "list"
-                       : (section.kind === "collections" ? "collections" : "songs")
-            const items = kind === "collections" ? (section.collections || []) : (section.songs || [])
-            if (items.length === 0)
+            if (page.sectionItemCount(section) === 0)
                 continue
+            const isGroups = section.kind === "groups"
+            const collectionKind = section.kind === "collections"
             result.push({
                 "key": id !== "" ? id : "section-" + i,
                 "title": page.sectionTitle(id, section.title),
-                "icon": page.sectionIcon(id),
-                "kind": kind,
-                "items": items,
-                "actionText": kind === "collections" ? "更多" : "播放全部"
+                "icon": section.icon !== undefined && section.icon !== ""
+                        ? section.icon : page.sectionIcon(id),
+                "kind": section.kind,
+                "items": isGroups ? [] : (collectionKind ? (section.collections || []) : (section.songs || [])),
+                "groups": isGroups ? (section.groups || []) : []
             })
         }
         return result
@@ -232,18 +348,16 @@ Item {
         Player.setQueue(songs, Math.max(0, Math.min(index, songs.length - 1)), true)
     }
 
-    function activateSection(section) {
-        if (!section)
-            return
-        if (section.key === "continuePlaying") {
-            Nav.openByName("recent")
-            return
-        }
-        if (section.kind === "collections") {
+    function handleSectionAction(kind, items) {
+        if (kind === "collections") {
             Nav.openTab("explore")
             return
         }
-        playSongs(section.items, 0)
+        if (kind === "continue") {
+            Nav.openByName("recent")
+            return
+        }
+        playSongs(items, 0)
     }
 
     function openCollection(collection) {
@@ -258,7 +372,21 @@ Item {
         const handlers = [
             ["library.changed", function() { page.refreshContinuePlaying() }],
             ["collections.changed", function() { page.refreshContinuePlaying() }],
-            ["history.changed", function() { page.refreshContinuePlaying() }]
+            ["history.changed", function() { page.refreshContinuePlaying() }],
+            // 登录 / 登出后每日推荐、私人 FM 等栏目的可用性会变化，强制重取
+            ["accounts.changed", function() { page.reload(true) }],
+            // 音源开关会改变后端返回的栏目，变化时强制重取（用事件负载而不是 Settings.values，
+            // 避免与 SettingsGlobal 的订阅顺序产生竞态）
+            ["settings", function(data) {
+                if (!data)
+                    return
+                const flags = String(data.neteaseEnabled) + "/" + String(data.bilibiliEnabled)
+                if (flags === page._sourceFlags)
+                    return
+                page._sourceFlags = flags
+                if (page.loadedOnce)
+                    page.reload(true)
+            }]
         ]
         for (let i = 0; i < handlers.length; i++) {
             Api.on(handlers[i][0], handlers[i][1])
@@ -273,9 +401,10 @@ Item {
     }
 
     Component.onCompleted: {
+        _sourceFlags = currentSourceFlags()
         subscribeEvents()
         if (Api.connected)
-            reload()
+            reload(false)
         else
             connectTimeout.restart()
     }
@@ -285,18 +414,22 @@ Item {
         connectTimeout.stop()
     }
 
-    // 后端连上后自动开始加载；长时间连不上时给出错误卡而不是一直转圈
+    // 后端断线重连后自动重新加载；断线时立即结束加载态并给出错误卡（不要无限转圈）
     Connections {
-        target: Api
+        target: Backend
 
         function onConnectedChanged() {
-            if (Api.connected) {
+            if (Backend.connected) {
                 connectTimeout.stop()
-                page.reload()
-            } else if (page.loadedOnce || !page.loading) {
-                page.homeData = null
-                page.homeErrors = []
-                page.loadError = "后端未连接"
+                page._sourceFlags = page.currentSourceFlags()
+                // 首次加载 / 加载失败（含断线）时强制重取，否则走短缓存快速刷新
+                page.reload(page.loadError !== "" || !page.loadedOnce)
+            } else {
+                ++page._loadSeq
+                page.loadTimeout.stop()
+                page.loading = false
+                page.refreshing = false
+                page.loadError = "后端未连接，正在等待重连…"
             }
         }
     }
@@ -337,7 +470,8 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: page.sideMargin
             anchors.right: parent.right
-            anchors.rightMargin: page.sideMargin
+            // 右侧给常驻刷新按钮留出位置，标题过长时省略而不是压到按钮上
+            anchors.rightMargin: page.sideMargin + 52
             anchors.verticalCenter: parent.verticalCenter
             spacing: page.compactHeader ? 0 : 2
 
@@ -385,7 +519,30 @@ Item {
             }
         }
 
+        // 常驻刷新按钮：下拉刷新在桌面端不容易发现，标题栏固定给一个入口。
+        IconButton {
+            id: headerRefreshButton
 
+            anchors.right: parent.right
+            anchors.rightMargin: page.sideMargin - 8
+            anchors.verticalCenter: parent.verticalCenter
+            icon: "refresh"
+            iconSize: 24
+            size: 44
+            tooltip: page.refreshing ? "正在刷新首页…" : "刷新首页"
+            opacity: page.refreshing ? 0.5 : 1
+            enabled: !page.refreshing
+            onClicked: page.reload(true)
+
+            // 刷新中旋转图标（IconButton 整体旋转对圆形 hover 底无视觉影响）
+            RotationAnimation on rotation {
+                running: page.refreshing
+                loops: Animation.Infinite
+                from: 0
+                to: 360
+                duration: 900
+            }
+        }
     }
 
     // ------------------------------------------------------------------ 首屏加载
@@ -431,7 +588,7 @@ Item {
         // 后者在回弹动画结束后才触发，那时 verticalOvershoot 已归零，永远刷新不了。
         onDragEnded: {
             if (pullReady && !page.refreshing)
-                page.reload()
+                page.reload(true)
         }
 
         // 下拉指示器：拖动时跟随下拉距离旋转；松手触发刷新后保持显示，
@@ -472,8 +629,6 @@ Item {
             }
 
             // 刷新中的持续旋转（约 1 秒一圈）。
-            // 用 RotationAnimation 直接改 rotation 属性（此时绑定已被 refreshing 固定为 0，
-            // 动画结束后不会跳回，因为刷新结束时组件会淡出）。
             RotationAnimation {
                 id: refreshSpin
                 target: refreshIcon
@@ -503,12 +658,23 @@ Item {
                 id: errorCard
 
                 width: contentColumn.width
-                height: 48
-                visible: page.loadError !== "" || (page.homeErrors && page.homeErrors.length > 0)
+                height: page.showErrorCard ? 48 : 0
+                visible: page.showErrorCard
                 message: page.loadError !== ""
                          ? "首页加载失败：" + page.loadError
-                         : page.homeErrors.join("；")
-                onRetry: page.reload()
+                         : page.loadErrors.join("；")
+                onRetry: page.reload(true)
+            }
+
+            // 未登录：登录专属栏目被隐藏，用温和的引导卡替代红色错误
+            LoginHintCard {
+                id: loginHint
+
+                width: contentColumn.width
+                height: visible ? implicitHeight : 0
+                visible: page.showLoginHint
+                message: page.loginErrors.join("；")
+                onLoginClicked: Nav.openLoginPanel("NETEASE")
             }
 
             Repeater {
@@ -521,10 +687,12 @@ Item {
                     icon: modelData.icon
                     kind: modelData.kind
                     items: modelData.items
-                    actionText: modelData.actionText
-                    onActionClicked: page.activateSection(modelData)
-                    onSongActivated: function(index) {
-                        page.playSongs(modelData.items, index)
+                    groups: modelData.groups
+                    onActionClicked: function(kind, items) {
+                        page.handleSectionAction(kind, items)
+                    }
+                    onSongActivated: function(songs, index) {
+                        page.playSongs(songs, index)
                     }
                     onCollectionActivated: function(collection) {
                         page.openCollection(collection)
@@ -532,9 +700,38 @@ Item {
                 }
             }
 
+            // YouTube Music 首页 shelves：组件由 YouTube 音源负责人提供，
+            // 未启用 / 文件不存在 / 无数据时 Loader 不激活或高度为 0，不影响首页其它栏目。
+            Loader {
+                id: youtubeLoader
+
+                width: contentColumn.width
+                active: page.youtubeEnabled
+                // 组件自带高度（implicitHeight 优先，其次 height）才显示；无数据时应自行隐藏为 0。
+                visible: status === Loader.Ready && item !== null
+                         && ((item.implicitHeight !== undefined && item.implicitHeight > 0)
+                             || (item.height !== undefined && item.height > 0))
+                height: visible
+                        ? (item.implicitHeight !== undefined && item.implicitHeight > 0
+                           ? item.implicitHeight : item.height)
+                        : 0
+                source: Qt.resolvedUrl("../components/youtube/YouTubeHomeSection.qml")
+                asynchronous: true
+
+                onStatusChanged: {
+                    if (status === Loader.Error)
+                        console.warn("[home] YouTube 首页组件不可用：", source)
+                }
+                onLoaded: {
+                    if (item) {
+                        item.width = Qt.binding(function() { return contentColumn.width })
+                    }
+                }
+            }
+
             EmptyState {
                 width: contentColumn.width
-                height: 280
+                height: page.showEmpty ? 280 : 0
                 visible: page.showEmpty
                 icon: "home"
                 title: "首页还没有内容"
