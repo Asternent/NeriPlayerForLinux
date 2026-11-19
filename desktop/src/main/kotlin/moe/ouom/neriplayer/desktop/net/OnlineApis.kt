@@ -573,11 +573,30 @@ class BiliApi(private val http: HttpService) {
         return "$query&w_rid=$wRid"
     }
 
-    fun searchVideos(keyword: String, page: Int = 1): List<Song> {
+    /**
+     * 视频搜索。
+     *
+     * 参数与 Android `BiliClient.searchVideos` 对齐：
+     * - [order] 排序（`totalrank`=综合，另有 `click`/`pubdate`/`dm`/`stow`）；
+     * - [duration] 时长筛选（0=全部 / 1=<10 分钟 / 2=10~30 分钟 / 3=30~60 分钟 / 4=>60 分钟）；
+     * - [tids] 分区（0=全部，传入 B 站分区 tid）。
+     *
+     * 自动换源依赖 [duration] 把候选限制在与歌曲时长相近的档位，避免搜到整场 live/合集。
+     */
+    fun searchVideos(
+        keyword: String,
+        page: Int = 1,
+        order: String = "totalrank",
+        duration: Int = 0,
+        tids: Int = 0,
+    ): List<Song> {
         ensureCookies()
         val params = mapOf(
             "search_type" to "video",
             "keyword" to keyword,
+            "order" to order,
+            "duration" to duration.toString(),
+            "tids" to tids.toString(),
             "page" to page.toString(),
             "page_size" to "30",
         )
@@ -590,7 +609,8 @@ class BiliApi(private val http: HttpService) {
             lastRoot = wbiRequest("https://api.bilibili.com/x/web-interface/wbi/search/type", params)
             if (isBlockedResponse(lastRoot)) {
                 val fallback = "https://api.bilibili.com/x/web-interface/search/type?search_type=video" +
-                    "&keyword=${urlEncode(keyword)}&page=$page&page_size=30"
+                    "&keyword=${urlEncode(keyword)}&order=${urlEncode(order)}&duration=$duration&tids=$tids" +
+                    "&page=$page&page_size=30"
                 lastRoot = NeriJsonParser.parse(http.get(fallback, headers).orEmpty()).asObject()
             }
             val results = lastRoot?.obj("data")?.array("result")
@@ -603,6 +623,9 @@ class BiliApi(private val http: HttpService) {
 
     private fun mapSearchResults(results: kotlinx.serialization.json.JsonArray): List<Song> =
         results.objects().mapNotNull { item ->
+            // 与 Android 一致：只保留视频条目，搜索结果里偶尔混入课程/直播等其它 type
+            val type = item.str("type")
+            if (!type.isNullOrBlank() && type != "video") return@mapNotNull null
             val bvid = item.str("bvid") ?: item.str("aid") ?: return@mapNotNull null
             Song(
                 key = biliSongKey(bvid),
