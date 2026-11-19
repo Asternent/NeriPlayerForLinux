@@ -45,8 +45,10 @@ data class DownloadedSong(
     )
 }
 
+@Serializable
 enum class DownloadState { QUEUED, RUNNING, DONE, FAILED, CANCELED }
 
+@Serializable
 data class DownloadTask(
     val id: String,
     val song: Song,

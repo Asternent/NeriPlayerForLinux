@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=NeriPlayer
+Name[zh_CN]=音理音理
+GenericName=Music Player
+GenericName[zh_CN]=音乐播放器
+Comment=Multi-source online and local music player (Qt desktop)
+Comment[zh_CN]=多源在线 / 本地音乐播放器（Qt 原生桌面版）
+Exec=neriplayer %U
+Icon=neriplayer
+Terminal=false
+Categories=AudioVideo;Audio;Music;Player;
+Keywords=music;audio;player;netease;bilibili;
+StartupNotify=true
+StartupWMClass=neriplayer
+SingleMainWindow=true

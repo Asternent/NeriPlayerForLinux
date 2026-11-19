@@ -1,5 +1,6 @@
 package moe.ouom.neriplayer.desktop.core
 
+import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -220,16 +221,20 @@ class HistoryRepository {
         _entries.value.sortedByDescending { it.playCount }.map { it.song }.take(limit)
 }
 
+@Serializable
 enum class StatsPeriod { DAY, WEEK, MONTH, YEAR, ALL }
 
+@Serializable
 enum class StatsSort { PLAY_COUNT, LISTEN_TIME, RECENT }
 
+@Serializable
 data class StatsSummary(
     val plays: Int = 0,
     val listenMs: Long = 0L,
     val trackCount: Int = 0,
 )
 
+@Serializable
 data class HotSong(
     val song: Song,
     val playCount: Int,

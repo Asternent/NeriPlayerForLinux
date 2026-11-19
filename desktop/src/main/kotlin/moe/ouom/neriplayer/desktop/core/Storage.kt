@@ -73,9 +73,17 @@ enum class DarkModeSetting { AUTO, LIGHT, DARK }
 data class HomeCardSettings(
     val continuePlaying: Boolean = true,
     val guessYouLike: Boolean = true,
+    /** 兼容旧字段：与 ranks 同时控制「排行榜」栏目。 */
     val hotTracks: Boolean = true,
     val radar: Boolean = true,
+    /** 兼容旧字段：与 playlists 同时控制「推荐歌单」栏目。 */
     val recommended: Boolean = true,
+    val dailyRecommend: Boolean = true,
+    val privateFm: Boolean = true,
+    val biliMusic: Boolean = true,
+    val ranks: Boolean = true,
+    val newSongs: Boolean = true,
+    val playlists: Boolean = true,
 )
 
 @Serializable
@@ -83,6 +91,8 @@ data class AppSettings(
     val themeSeedColor: String = "0061A4",
     val customSeedColors: List<String> = emptyList(),
     val dynamicColor: Boolean = false,
+    /** 主题跟随系统：深浅色与强调色都用桌面环境（KDE/GNOME）的配置。 */
+    val followSystemTheme: Boolean = true,
     val darkMode: DarkModeSetting = DarkModeSetting.AUTO,
     val paletteStyle: String = "TonalSpot",
     val colorSpec: String = "SPEC_2021",
@@ -96,15 +106,37 @@ data class AppSettings(
     val equalizerBands: List<Float> = List(10) { 0f },
     val lyricsFontScale: Float = 1.0f,
     val showLyricTranslation: Boolean = true,
+    /** 播放页歌词水平对齐：LEFT / CENTER / RIGHT。 */
+    val lyricsAlignment: String = "LEFT",
+    /** 歌词高亮方式：LINE=整句亮起，WORD=逐字亮起。 */
+    val lyricsHighlight: String = "LINE",
+    /** 当前歌词高亮动画时长（毫秒）。 */
+    val lyricsHighlightDuration: Int = 220,
     val coverShowsLyrics: Boolean = true,
     val showNowPlayingTitle: Boolean = true,
     val songTitleMarquee: Boolean = true,
+    /** 播放页封面形状：CIRCLE / ROUNDED / SQUARE。 */
+    val nowPlayingCoverShape: String = "ROUNDED",
+    /** 播放页背景：BLUR=封面模糊，GRADIENT=渐变色块，SOLID=纯色。 */
+    val nowPlayingBackground: String = "BLUR",
+    /** 沉浸模式下鼠标静止一段时间后淡出控制条，只保留歌词与封面。 */
+    val nowPlayingAutoHideControls: Boolean = true,
+    /** 控制条自动隐藏延迟（毫秒）。 */
+    val nowPlayingAutoHideDelayMs: Int = 2600,
+    /** 圆形封面是否缓慢旋转（黑胶效果，仅 CIRCLE 形状生效）。 */
+    val nowPlayingCoverRotate: Boolean = false,
+    /** 播放页歌曲信息的水平对齐：LEFT / CENTER / RIGHT。 */
+    val nowPlayingInfoAlignment: String = "LEFT",
+    /** 当前歌词行是否加辉光效果。 */
+    val nowPlayingLyricsGlow: Boolean = true,
     /** 界面缩放（HiDPI）：0 = 跟随桌面缩放，其余为 1.0 / 1.25 / 1.5 … 的固定比例。 */
     val uiScale: Float = 0f,
     val qualityPreference: String = "exhigh",
     val neteaseEnabled: Boolean = true,
     val bilibiliEnabled: Boolean = true,
     val youtubeEnabled: Boolean = false,
+    /** 网易云音源不可播时自动到哔哩哔哩搜索同名歌曲兜底。 */
+    val neteaseAutoSourceSwitch: Boolean = true,
     val defaultStartTab: String = "home",
     val sleepTimerMinutes: Int = 30,
     val resumeLastQueue: Boolean = true,
@@ -163,6 +195,12 @@ data class AppSettings(
     val mprisEnabled: Boolean = true,
     /** 是否已经提示过「已最小化到托盘」。 */
     val trayHintShown: Boolean = false,
+    /** 左侧导航栏是否收起（纯图标模式）。 */
+    val navCollapsed: Boolean = true,
+
+    // ---------------------------------------------------------------- 快捷键
+    /** 程序内 / 全局快捷键绑定。 */
+    val shortcuts: ShortcutSettings = ShortcutSettings(),
 )
 
 /** 设置仓库：内存 StateFlow + JSON 持久化。 */

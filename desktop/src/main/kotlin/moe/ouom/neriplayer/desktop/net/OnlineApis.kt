@@ -1,5 +1,6 @@
 package moe.ouom.neriplayer.desktop.net
 
+import kotlinx.serialization.Serializable
 import moe.ouom.neriplayer.desktop.core.MediaSource
 import moe.ouom.neriplayer.desktop.core.OnlineArtist
 import moe.ouom.neriplayer.desktop.core.OnlineCollection
@@ -197,16 +198,7 @@ class NeteaseApi(private val http: HttpService) {
     fun playlistDetail(id: String, limit: Int = Int.MAX_VALUE): Pair<OnlineCollection, List<Song>>? {
         val root = getJson("/api/v6/playlist/detail?id=$id") ?: return null
         val playlist = root.obj("playlist") ?: return null
-        val collection = OnlineCollection(
-            id = id,
-            name = cleanBiliText(playlist.str("name")),
-            creator = playlist.obj("creator")?.str("nickname").orEmpty(),
-            coverUrl = normalizeImageUrl(playlist.str("coverImgUrl")),
-            trackCount = playlist.int("trackCount") ?: 0,
-            playCount = playlist.long("playCount") ?: 0L,
-            source = MediaSource.NETEASE,
-            description = playlist.str("description").orEmpty(),
-        )
+        val collection = collectionFromPlaylist(id, playlist)
         val tracks = playlist.array("tracks")?.objects().orEmpty().mapNotNull { songFromJson(JsonObjectSelf(it)) }
         // 详情接口只返回前若干首（热歌榜 200 首只回 10 首），完整列表在 trackIds 里，
         // 缺的部分按 trackIds 顺序用歌曲详情接口补齐，否则歌单会「只显示 10 首」。
@@ -221,6 +213,46 @@ class NeteaseApi(private val http: HttpService) {
         }
         return collection to songs
     }
+
+    /**
+     * 首页榜单 / 雷达：v6 接口支持 `n` 参数一次取回前 N 首，
+     * 避免「先拿 10 首再按 trackIds 补拉」的第二趟请求。
+     */
+    fun playlistPreview(id: String, limit: Int): Pair<OnlineCollection, List<Song>>? {
+        val root = getJson("/api/v6/playlist/detail?id=$id&n=$limit") ?: return null
+        val playlist = root.obj("playlist") ?: return null
+        val collection = collectionFromPlaylist(id, playlist)
+        val tracks = playlist.array("tracks")?.objects().orEmpty().mapNotNull { songFromJson(JsonObjectSelf(it)) }
+        val trackIds = playlist.array("trackIds")?.objects().orEmpty().mapNotNull { item ->
+            item.long("id")?.takeIf { it != 0L }
+        }
+        val wantedIds = trackIds.take(limit)
+        val songs = when {
+            wantedIds.isEmpty() -> tracks.take(limit)
+            wantedIds.size > tracks.size -> fetchSongsByIds(wantedIds)
+            else -> tracks.take(limit)
+        }
+        return collection to songs
+    }
+
+    /** 只取歌单元数据（首页雷达歌单只要名称/封面），n=0 不返回曲目。 */
+    fun playlistSummary(id: String): OnlineCollection? {
+        val root = getJson("/api/v6/playlist/detail?id=$id&n=0") ?: return null
+        val playlist = root.obj("playlist") ?: return null
+        return collectionFromPlaylist(id, playlist)
+    }
+
+    private fun collectionFromPlaylist(id: String, playlist: JsonObjectSelf): OnlineCollection =
+        OnlineCollection(
+            id = id,
+            name = cleanBiliText(playlist.str("name")),
+            creator = playlist.obj("creator")?.str("nickname").orEmpty(),
+            coverUrl = normalizeImageUrl(playlist.str("coverImgUrl")),
+            trackCount = playlist.int("trackCount") ?: 0,
+            playCount = playlist.long("playCount") ?: 0L,
+            source = MediaSource.NETEASE,
+            description = playlist.str("description").orEmpty(),
+        )
 
     /** 按 id 批量拉取歌曲详情，保持传入顺序；单次请求最多 200 首以控制 URL 长度。 */
     private fun fetchSongsByIds(ids: List<Long>): List<Song> {
@@ -260,12 +292,26 @@ class NeteaseApi(private val http: HttpService) {
     }
 
     fun recommendedNewSongs(limit: Int = 12): List<Song> {
-        val root = getJson("/api/personalized/newsong?limit=$limit") ?: return emptyList()
+        // 旧核心少了 type/areaId，接口会退回非个性化结果；补上后才是「推荐新歌」。
+        val root = getJson("/api/personalized/newsong?type=recommend&limit=$limit&areaId=0") ?: return emptyList()
         val list = root.array("result") ?: return emptyList()
-        return list.objects().mapNotNull { item ->
+        val parsed = list.objects().mapNotNull { item ->
             val songObj = item.obj("song") ?: item
             songFromJson(JsonObjectSelf(songObj))?.let { song ->
                 if (song.artworkUrl.isNullOrBlank()) song.copy(artworkUrl = normalizeImageUrl(item.str("picUrl"))) else song
+            }
+        }
+        // 部分条目既没有 album.picUrl 也没有外层 picUrl，用歌曲详情接口补齐封面
+        val missingIds = parsed.filter { it.artworkUrl.isNullOrBlank() }
+            .mapNotNull { it.remoteId?.toLongOrNull() }
+        if (missingIds.isEmpty()) return parsed
+        val covers = songCovers(missingIds.take(50))
+        return parsed.map { song ->
+            if (song.artworkUrl.isNullOrBlank()) {
+                val cover = covers[song.remoteId?.toLongOrNull()]
+                if (cover != null) song.copy(artworkUrl = cover) else song
+            } else {
+                song
             }
         }
     }
@@ -322,6 +368,113 @@ class NeteaseApi(private val http: HttpService) {
             )
         }
     }
+
+    // ---------------------------------------------------------------- 首页推荐（登录态 / 公开接口）
+
+    /**
+     * 每日推荐歌曲。未登录时接口返回 code=301，这里按空结果处理（栏目由首页隐藏）。
+     * 走 /api 前缀的明文接口，无需 WEAPI 加密。
+     */
+    fun dailyRecommendedSongs(): List<Song> {
+        val root = postApi("/api/v3/discovery/recommend/songs", "{}") ?: return emptyList()
+        if (root.int("code") != 200) return emptyList()
+        val list = root.obj("data")?.array("dailySongs") ?: return emptyList()
+        return list.objects().mapNotNull { songFromJson(JsonObjectSelf(it)) }
+    }
+
+    /**
+     * 私人 FM：接口每次只回一小批（有时仅 1 首），调用方按需多次取并去重。
+     * 未登录返回 301 → 空数组。
+     */
+    fun personalFmSongs(limit: Int = 18): List<Song> {
+        val collected = LinkedHashMap<String, Song>()
+        repeat(6) {
+            if (collected.size >= limit) return@repeat
+            val root = postApi("/api/v1/radio/get", "{}") ?: return collected.values.toList()
+            if (root.int("code") != 200) return collected.values.toList()
+            val list = root.array("data") ?: root.obj("data")?.array("list") ?: return collected.values.toList()
+            list.objects().mapNotNull { songFromJson(JsonObjectSelf(it)) }.forEach { song ->
+                if (collected.size < limit) collected.putIfAbsent(song.key, song)
+            }
+        }
+        return collected.values.toList()
+    }
+
+    /** 每日推荐歌单（需登录；未登录 301 → 空数组）。 */
+    fun dailyRecommendedPlaylists(): List<OnlineCollection> {
+        val root = postApi("/api/v1/discovery/recommend/resource", "{\"limit\":12}") ?: return emptyList()
+        if (root.int("code") != 200) return emptyList()
+        val list = root.array("recommend") ?: root.array("result") ?: return emptyList()
+        return list.objects().mapNotNull { item ->
+            val id = item.long("id") ?: return@mapNotNull null
+            OnlineCollection(
+                id = id.toString(),
+                name = cleanBiliText(item.str("name")),
+                creator = item.obj("creator")?.str("nickname").orEmpty(),
+                coverUrl = normalizeImageUrl(item.str("picUrl") ?: item.str("coverImgUrl")),
+                trackCount = item.int("trackCount") ?: 0,
+                playCount = item.long("playCount") ?: 0L,
+                source = MediaSource.NETEASE,
+            )
+        }
+    }
+
+    /** 精品歌单：/api 明文 POST 即可，返回体顶层是 playlists。 */
+    fun highQualityPlaylists(limit: Int = 12): List<OnlineCollection> {
+        val text = http.postForm(
+            "$NETEASE_BASE/api/playlist/highquality/list",
+            mapOf("cat" to "全部", "limit" to limit.toString(), "lasttime" to "0", "total" to "true"),
+            baseHeaders,
+        ) ?: return emptyList()
+        val root = NeriJsonParser.parse(text).asObject() ?: return emptyList()
+        val list = root.array("playlists") ?: root.obj("data")?.array("playlists") ?: return emptyList()
+        return list.objects().mapNotNull { item ->
+            val id = item.long("id") ?: return@mapNotNull null
+            OnlineCollection(
+                id = id.toString(),
+                name = cleanBiliText(item.str("name")),
+                creator = item.obj("creator")?.str("nickname").orEmpty(),
+                coverUrl = normalizeImageUrl(item.str("coverImgUrl")),
+                trackCount = item.int("trackCount") ?: 0,
+                playCount = item.long("playCount") ?: item.long("subscribedCount") ?: 0L,
+                source = MediaSource.NETEASE,
+            )
+        }
+    }
+
+    /** 歌单广场（热门 / ACG 等分类），与标签歌单同一公开接口。 */
+    fun playlistSquare(cat: String, limit: Int = 12): List<OnlineCollection> {
+        val root = getJson(
+            "/api/playlist/list?cat=${urlEncode(cat)}&order=hot&offset=0&limit=$limit&total=true",
+        ) ?: return emptyList()
+        val list = root.array("playlists") ?: return emptyList()
+        return list.objects().mapNotNull { item ->
+            val id = item.long("id") ?: return@mapNotNull null
+            OnlineCollection(
+                id = id.toString(),
+                name = cleanBiliText(item.str("name")),
+                creator = item.obj("creator")?.str("nickname").orEmpty(),
+                coverUrl = normalizeImageUrl(item.str("coverImgUrl")),
+                trackCount = item.int("trackCount") ?: 0,
+                playCount = item.long("playCount") ?: 0L,
+                source = MediaSource.NETEASE,
+            )
+        }
+    }
+
+    /** 网易云明文 /api 接口（部分首页推荐接口仍接受非加密 POST）。 */
+    private fun postApi(
+        path: String,
+        jsonBody: String,
+    ): JsonObjectSelf? {
+        val text = http.execute(
+            method = "POST",
+            url = "$NETEASE_BASE$path",
+            body = jsonBody,
+            headers = baseHeaders + mapOf("Content-Type" to "application/json"),
+        )?.text() ?: return null
+        return NeriJsonParser.parse(text).asObject()?.let(::JsonObjectSelf)
+    }
 }
 
 /** 简单的 JSON 对象包装，方便统一调用解析扩展。 */
@@ -332,8 +485,10 @@ value class JsonObjectSelf(private val raw: kotlinx.serialization.json.JsonObjec
     fun int(key: String) = raw.int(key)
     fun obj(key: String) = raw.obj(key)?.let(::JsonObjectSelf)
     fun array(key: String) = raw.array(key)
+    fun keys(): Set<String> = raw.keys
 }
 
+@Serializable
 data class SongUrl(
     val url: String,
     val level: String,
@@ -418,11 +573,30 @@ class BiliApi(private val http: HttpService) {
         return "$query&w_rid=$wRid"
     }
 
-    fun searchVideos(keyword: String, page: Int = 1): List<Song> {
+    /**
+     * 视频搜索。
+     *
+     * 参数与 Android `BiliClient.searchVideos` 对齐：
+     * - [order] 排序（`totalrank`=综合，另有 `click`/`pubdate`/`dm`/`stow`）；
+     * - [duration] 时长筛选（0=全部 / 1=<10 分钟 / 2=10~30 分钟 / 3=30~60 分钟 / 4=>60 分钟）；
+     * - [tids] 分区（0=全部，传入 B 站分区 tid）。
+     *
+     * 自动换源依赖 [duration] 把候选限制在与歌曲时长相近的档位，避免搜到整场 live/合集。
+     */
+    fun searchVideos(
+        keyword: String,
+        page: Int = 1,
+        order: String = "totalrank",
+        duration: Int = 0,
+        tids: Int = 0,
+    ): List<Song> {
         ensureCookies()
         val params = mapOf(
             "search_type" to "video",
             "keyword" to keyword,
+            "order" to order,
+            "duration" to duration.toString(),
+            "tids" to tids.toString(),
             "page" to page.toString(),
             "page_size" to "30",
         )
@@ -435,7 +609,8 @@ class BiliApi(private val http: HttpService) {
             lastRoot = wbiRequest("https://api.bilibili.com/x/web-interface/wbi/search/type", params)
             if (isBlockedResponse(lastRoot)) {
                 val fallback = "https://api.bilibili.com/x/web-interface/search/type?search_type=video" +
-                    "&keyword=${urlEncode(keyword)}&page=$page&page_size=30"
+                    "&keyword=${urlEncode(keyword)}&order=${urlEncode(order)}&duration=$duration&tids=$tids" +
+                    "&page=$page&page_size=30"
                 lastRoot = NeriJsonParser.parse(http.get(fallback, headers).orEmpty()).asObject()
             }
             val results = lastRoot?.obj("data")?.array("result")
@@ -448,6 +623,9 @@ class BiliApi(private val http: HttpService) {
 
     private fun mapSearchResults(results: kotlinx.serialization.json.JsonArray): List<Song> =
         results.objects().mapNotNull { item ->
+            // 与 Android 一致：只保留视频条目，搜索结果里偶尔混入课程/直播等其它 type
+            val type = item.str("type")
+            if (!type.isNullOrBlank() && type != "video") return@mapNotNull null
             val bvid = item.str("bvid") ?: item.str("aid") ?: return@mapNotNull null
             Song(
                 key = biliSongKey(bvid),
@@ -556,6 +734,94 @@ class BiliApi(private val http: HttpService) {
         }
     }
 
+    // ---------------------------------------------------------------- 首页音乐榜 / 热门音乐
+
+    /**
+     * B 站版权音乐榜（listType：1 热门榜 / 2 原创榜）。
+     * 先取期数列表挑最新一期，再取该期曲目；两步都走公开 GET 接口，不需要 WBI 签名。
+     */
+    fun musicRankSongs(listType: Int, limit: Int = 20): List<Song> {
+        val periodsRoot = getApiJson(
+            "https://api.bilibili.com/x/copyright-music-publicity/toplist/all_period?list_type=$listType",
+        ) ?: return emptyList()
+        if (periodsRoot.int("code") != 0) return emptyList()
+        val periods = periodsRoot.obj("data")?.obj("list") ?: return emptyList()
+        var latestId = 0L
+        var latestPublish = 0L
+        periods.keys().forEach { year ->
+            periods.array(year)?.objects().orEmpty().forEach { item ->
+                val id = item.long("ID") ?: return@forEach
+                val publish = item.long("publish_time") ?: 0L
+                if (publish > latestPublish || (publish == latestPublish && id > latestId)) {
+                    latestPublish = publish
+                    latestId = id
+                }
+            }
+        }
+        if (latestId <= 0L) return emptyList()
+        val songsRoot = getApiJson(
+            "https://api.bilibili.com/x/copyright-music-publicity/toplist/music_list?list_id=$latestId",
+        ) ?: return emptyList()
+        if (songsRoot.int("code") != 0) return emptyList()
+        val list = songsRoot.obj("data")?.array("list") ?: return emptyList()
+        return list.objects().take(limit).mapNotNull { musicRankSong(JsonObjectSelf(it)) }
+    }
+
+    /**
+     * 音乐分区（rid=3）热门视频榜。
+     * Web 端分区榜已停更，只能走移动端接口；它只返回 avid，需要本地换算 bvid。
+     */
+    fun musicHotVideos(limit: Int = 30): List<Song> {
+        val root = getApiJson(
+            "https://app.bilibili.com/x/v2/rank/region?rid=3&type=all&pn=1&ps=$limit",
+        ) ?: return emptyList()
+        if (root.int("code") != 0) return emptyList()
+        val data = root.array("data") ?: return emptyList()
+        return data.objects().take(limit).mapNotNull { item ->
+            val aid = item.str("param")?.trim()?.toLongOrNull() ?: return@mapNotNull null
+            val bvid = biliAidToBvid(aid)
+            if (bvid.isBlank()) return@mapNotNull null
+            Song(
+                key = biliSongKey(bvid),
+                source = MediaSource.BILIBILI,
+                title = cleanBiliText(item.str("title")).ifBlank { "未知视频" },
+                artist = cleanBiliText(item.str("name")),
+                album = "哔哩哔哩",
+                durationMs = (item.long("duration") ?: 0L) * 1000L,
+                remoteId = bvid,
+                artworkUrl = normalizeImageUrl(item.str("cover")),
+                extraId = item.long("cid")?.takeIf { it > 0L }?.toString(),
+            )
+        }
+    }
+
+    private fun musicRankSong(item: JsonObjectSelf): Song? {
+        // 有官方 MV 时优先用 MV（音质/画面更稳定），否则回退上榜的授权投稿。
+        val bvid = item.str("mv_bvid").orEmpty().trim()
+            .ifBlank { item.str("creation_bvid").orEmpty().trim() }
+        if (bvid.isBlank()) return null
+        val cover = normalizeImageUrl(item.str("mv_cover"))
+            ?: normalizeImageUrl(item.str("creation_cover"))
+        return Song(
+            key = biliSongKey(bvid),
+            source = MediaSource.BILIBILI,
+            title = cleanBiliText(item.str("music_title"))
+                .ifBlank { cleanBiliText(item.str("creation_title")) }
+                .ifBlank { "未知歌曲" },
+            artist = cleanBiliText(item.str("singer")),
+            album = cleanBiliText(item.str("album")),
+            durationMs = (item.long("creation_duration") ?: 0L) * 1000L,
+            remoteId = bvid,
+            artworkUrl = cover,
+            extraId = item.long("creation_first_cid")?.takeIf { it > 0L }?.toString(),
+        )
+    }
+
+    private fun getApiJson(url: String): JsonObjectSelf? {
+        val text = http.get(url, headers) ?: return null
+        return NeriJsonParser.parse(text).asObject()?.let(::JsonObjectSelf)
+    }
+
     /**
      * 读取收藏夹内的视频（作为可播放音频）。
      * 该接口每页最多 20 条，需要按 pn 翻页；onPage 会在每页返回时回调已累计的列表，便于界面边加载边展示。
@@ -591,6 +857,29 @@ class BiliApi(private val http: HttpService) {
         }
         return if (collected.size > maxItems) collected.take(maxItems) else collected
     }
+}
+
+/**
+ * B 站 avid → bvid 换算（算法与官方前端一致）。
+ * 移动端分区榜只给 avid，而播放链路要求 bvid；本地换算可以省去逐个视频的详情请求。
+ */
+private fun biliAidToBvid(aid: Long): String {
+    if (aid <= 0L) return ""
+    val alphabet = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+    val xorCode = 23442827791579L
+    val maxAid = 1L shl 51
+    val base = 58L
+    val chars = "BV1000000000".toCharArray()
+    var remainder = (maxAid or aid) xor xorCode
+    var index = chars.size - 1
+    while (remainder > 0L && index >= 3) {
+        chars[index] = alphabet[(remainder % base).toInt()]
+        remainder /= base
+        index -= 1
+    }
+    chars[3] = chars[9].also { chars[9] = chars[3] }
+    chars[4] = chars[7].also { chars[7] = chars[4] }
+    return String(chars)
 }
 
 /** 收藏夹条目 → 可播放歌曲（duration 单位为秒，封面为 http 需转 https）。可离线单测。 */

@@ -89,23 +89,27 @@ data class PlayStat(
     val listenMs: Long = 0L,
 )
 
+@Serializable
 data class ArtistGroup(
     val name: String,
     val songs: List<Song>,
 )
 
+@Serializable
 data class AlbumGroup(
     val name: String,
     val artist: String,
     val songs: List<Song>,
 )
 
+@Serializable
 data class LyricLine(
     val timeMs: Long,
     val text: String,
     val translation: String? = null,
 )
 
+@Serializable
 data class Lyrics(
     val raw: String = "",
     val lines: List<LyricLine> = emptyList(),
@@ -116,6 +120,7 @@ data class Lyrics(
 }
 
 /** 在线歌单 / 专辑 摘要。 */
+@Serializable
 data class OnlineCollection(
     val id: String,
     val name: String,
@@ -127,6 +132,7 @@ data class OnlineCollection(
     val description: String = "",
 )
 
+@Serializable
 data class OnlineArtist(
     val id: String,
     val name: String,
@@ -135,14 +141,17 @@ data class OnlineArtist(
     val source: MediaSource = MediaSource.NETEASE,
 )
 
+@Serializable
 data class OnlineTrack(
     val song: Song,
     val albumName: String = "",
     val coverUrl: String? = null,
 )
 
+@Serializable
 enum class SearchKind { SONG, PLAYLIST, ARTIST, ALBUM }
 
+@Serializable
 data class SearchPayload(
     val songs: List<Song> = emptyList(),
     val collections: List<OnlineCollection> = emptyList(),
