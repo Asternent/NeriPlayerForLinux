@@ -59,6 +59,8 @@ private slots:
 private:
     void ensureConnectedSoon();
     bool tryStartBackend();
+    /** 试连一次 socket，判断是否真有进程在监听（清理残留死 socket 用）。 */
+    bool probeSocket();
     void sendLine(const QJsonObject &object);
     void flushOutbox();
 
@@ -73,4 +75,7 @@ private:
     QString m_socketPath;
     qint64 m_backendPid = -1;
     bool m_triedStart = false;
+    /** 重启后端的尝试次数与上次尝试时间（避免无限刷进程）。 */
+    int m_startAttempts = 0;
+    qint64 m_lastStartAttemptMs = 0;
 };

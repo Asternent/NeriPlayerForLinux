@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJSEngine>
 #include <QJsonArray>
@@ -85,8 +86,21 @@ BackendClient::BackendClient(QObject *parent)
     m_reconnectTimer.setSingleShot(true);
     m_reconnectTimer.setInterval(400);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this]() {
-        if (m_socket->state() == QLocalSocket::UnconnectedState)
-            m_socket->connectToServer(m_socketPath);
+        if (m_socket->state() != QLocalSocket::UnconnectedState)
+            return;
+        // 后端可能没起来/已经退出：之前只在启动时尝试拉起一次，一旦失败就再也不重试，
+        // 表现为「后端老是不启动」。这里在重连时按冷却时间有限次地重新拉起。
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const bool cooldownElapsed = (now - m_lastStartAttemptMs) > 5000;
+        if (!probeSocket() && m_startAttempts < 20 && cooldownElapsed) {
+            m_lastStartAttemptMs = now;
+            ++m_startAttempts;
+            // 残留的死 socket 会让后端 bind 失败，先清掉
+            if (QFileInfo::exists(m_socketPath))
+                QFile::remove(m_socketPath);
+            tryStartBackend();
+        }
+        m_socket->connectToServer(m_socketPath);
     });
 
     m_timeoutTimer.setInterval(1000);
@@ -124,12 +138,34 @@ void BackendClient::connectToBackend()
 {
     if (m_socket->state() != QLocalSocket::UnconnectedState)
         return;
-    // socket 不存在说明后端没在跑：按 NERIPLAYER_BACKEND_JAR 拉起一个（打包后的默认行为）
-    if (!m_triedStart && !QFileInfo::exists(m_socketPath)) {
-        m_triedStart = true;
-        tryStartBackend();
+
+    // socket 文件存在并不等于后端在跑：后端异常退出/被强杀后，Unix socket 文件会残留，
+    // 直接连它只会得到 ConnectionRefused，且因为「文件存在」永远不会尝试拉起后端
+    // （表现为界面一直显示「后端未连接」）。所以先探测是否真的有人监听。
+    if (!m_triedStart) {
+        if (!QFileInfo::exists(m_socketPath) || !probeSocket()) {
+            m_triedStart = true;
+            // 记录尝试时间，避免重连定时器在同一轮里再拉起一次
+            m_startAttempts = 1;
+            m_lastStartAttemptMs = QDateTime::currentMSecsSinceEpoch();
+            // 残留的死 socket 会让后端 bind 失败，拉起前先清掉
+            if (QFileInfo::exists(m_socketPath))
+                QFile::remove(m_socketPath);
+            tryStartBackend();
+        }
     }
     m_socket->connectToServer(m_socketPath);
+}
+
+/** 试连一次 socket，判断是否有进程真的在监听（不留下连接）。 */
+bool BackendClient::probeSocket()
+{
+    QLocalSocket probe;
+    probe.connectToServer(m_socketPath);
+    const bool alive = probe.waitForConnected(300);
+    if (alive)
+        probe.disconnectFromServer();
+    return alive;
 }
 
 void BackendClient::ensureConnectedSoon()
@@ -146,6 +182,7 @@ void BackendClient::onSocketStateChanged()
     m_connected = nowConnected;
     if (m_connected) {
         m_readBuffer.clear();
+        m_startAttempts = 0;
         qInfo() << "[backend] connected to" << m_socketPath;
         // QLocalSocket 在 stateChanged(ConnectedState) 的调用栈里还没真正 open，
         // 直接写会得到 "device not open"；把通知排到事件循环下一轮再发出去。
