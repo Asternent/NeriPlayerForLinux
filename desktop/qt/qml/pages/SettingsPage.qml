@@ -4,7 +4,7 @@ import QtQuick.Dialogs
 import "../components"
 import "../components/settings"
 
-// 设置页：卡片式分组，对齐旧 Compose 设置页（主题 / 媒体库 / 播放 / 下载 / 悬浮歌词 /
+// 设置页：卡片式分组，对齐旧 Compose 设置页（主题 / 媒体库 / 播放 / 播放页 / 下载 / 悬浮歌词 /
 // 后台与系统控制 / 音乐源 / 同步 / 快捷键 / 关于）。所有修改即时通过 Settings / Api 生效。
 Item {
     id: page
@@ -1076,6 +1076,120 @@ Item {
                 }
             }
 
+            // ============================================================ 播放页
+            SettingsSection {
+                width: parent.width - 24
+                x: 12
+                title: "播放页"
+                description: "封面、控制条、歌曲信息与歌词的显示方式"
+                icon: "fullscreen"
+
+                // 用 Loader 加载播放页外观组件；文件缺失时退化为空，避免设置页整体加载失败
+                Loader {
+                    width: parent.width
+                    source: Qt.resolvedUrl("../components/settings/PlayerDesignSettings.qml")
+                    active: true
+                    visible: status === Loader.Ready
+                    height: status === Loader.Ready && item ? item.implicitHeight : 0
+                }
+
+                Item {
+                    width: 1
+                    height: 12
+                }
+
+                SettingsLabel {
+                    width: parent.width
+                    text: "歌曲信息与歌词"
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "显示歌词翻译"
+                    description: "在线歌词包含翻译时同时显示"
+                    checked: page.sb("showLyricTranslation", true)
+                    onToggled: function(checked) { page.setSetting("showLyricTranslation", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "封面页显示歌词"
+                    description: "在播放页封面下方显示逐行歌词"
+                    checked: page.sb("coverShowsLyrics", true)
+                    onToggled: function(checked) { page.setSetting("coverShowsLyrics", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "显示“正在播放”标题"
+                    description: "控制播放页顶部是否显示标题"
+                    checked: page.sb("showNowPlayingTitle", true)
+                    onToggled: function(checked) { page.setSetting("showNowPlayingTitle", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "滚动显示长歌曲名"
+                    description: "标题超出宽度时平滑滚动"
+                    checked: page.sb("songTitleMarquee", true)
+                    onToggled: function(checked) { page.setSetting("songTitleMarquee", checked) }
+                }
+
+                Item {
+                    width: 1
+                    height: 4
+                }
+
+                SliderRow {
+                    width: parent.width
+                    label: "歌词字号 " + Number(page.sv("lyricsFontScale", 1.0)).toFixed(2) + "x"
+                    from: 0.7
+                    to: 1.8
+                    decimals: 2
+                    externalValue: Number(page.sv("lyricsFontScale", 1.0))
+                    onCommitted: function(value) { page.setSetting("lyricsFontScale", value) }
+                }
+
+                SettingsLabel {
+                    width: parent.width
+                    text: "歌词对齐"
+                }
+                SegmentedOptions {
+                    width: parent.width
+                    options: [
+                        { value: "LEFT", label: "左对齐" },
+                        { value: "CENTER", label: "居中" },
+                        { value: "RIGHT", label: "右对齐" }
+                    ]
+                    value: page.sv("lyricsAlignment", "LEFT")
+                    onSelected: function(value) { page.setSetting("lyricsAlignment", value) }
+                }
+
+                SettingsLabel {
+                    width: parent.width
+                    text: "歌词高亮方式"
+                }
+                SegmentedOptions {
+                    width: parent.width
+                    options: [
+                        { value: "LINE", label: "整句亮起" },
+                        { value: "WORD", label: "逐字亮起" }
+                    ]
+                    value: page.sv("lyricsHighlight", "LINE")
+                    onSelected: function(value) { page.setSetting("lyricsHighlight", value) }
+                }
+
+                SliderRow {
+                    width: parent.width
+                    label: "高亮动画时长 " + Math.round(page.sv("lyricsHighlightDuration", 220)) + "ms"
+                    from: 0
+                    to: 800
+                    decimals: 0
+                    externalValue: Number(page.sv("lyricsHighlightDuration", 220))
+                    onCommitted: function(value) { page.setSetting("lyricsHighlightDuration", Math.round(value)) }
+                }
+            }
+
             // ============================================================ 下载设置
             SettingsSection {
                 width: parent.width - 24
@@ -1388,119 +1502,6 @@ Item {
                 SettingsNote {
                     width: parent.width
                     text: "悬浮歌词是独立的桌面窗口；未锁定时可直接拖动，锁定时鼠标穿透（Ctrl+Alt+L 解锁）。"
-                }
-            }
-
-            // ============================================================ 歌词与显示
-            SettingsSection {
-                width: parent.width - 24
-                x: 12
-                title: "歌词与显示"
-                description: "歌词翻译、封面歌词与字号"
-                icon: "subtitles"
-
-                SettingsSwitchRow {
-                    width: parent.width
-                    title: "显示歌词翻译"
-                    description: "在线歌词包含翻译时同时显示"
-                    checked: page.sb("showLyricTranslation", true)
-                    onToggled: function(checked) { page.setSetting("showLyricTranslation", checked) }
-                }
-
-                SettingsSwitchRow {
-                    width: parent.width
-                    title: "封面页显示歌词"
-                    description: "在播放页封面下方显示逐行歌词"
-                    checked: page.sb("coverShowsLyrics", true)
-                    onToggled: function(checked) { page.setSetting("coverShowsLyrics", checked) }
-                }
-
-                SettingsSwitchRow {
-                    width: parent.width
-                    title: "显示“正在播放”标题"
-                    description: "控制播放页顶部是否显示标题"
-                    checked: page.sb("showNowPlayingTitle", true)
-                    onToggled: function(checked) { page.setSetting("showNowPlayingTitle", checked) }
-                }
-
-                SettingsSwitchRow {
-                    width: parent.width
-                    title: "滚动显示长歌曲名"
-                    description: "标题超出宽度时平滑滚动"
-                    checked: page.sb("songTitleMarquee", true)
-                    onToggled: function(checked) { page.setSetting("songTitleMarquee", checked) }
-                }
-
-                Item {
-                    width: 1
-                    height: 4
-                }
-
-                SliderRow {
-                    width: parent.width
-                    label: "歌词字号 " + Number(page.sv("lyricsFontScale", 1.0)).toFixed(2) + "x"
-                    from: 0.7
-                    to: 1.8
-                    decimals: 2
-                    externalValue: Number(page.sv("lyricsFontScale", 1.0))
-                    onCommitted: function(value) { page.setSetting("lyricsFontScale", value) }
-                }
-
-                SettingsLabel {
-                    width: parent.width
-                    text: "歌词对齐"
-                }
-                SegmentedOptions {
-                    width: parent.width
-                    options: [
-                        { value: "LEFT", label: "左对齐" },
-                        { value: "CENTER", label: "居中" },
-                        { value: "RIGHT", label: "右对齐" }
-                    ]
-                    value: page.sv("lyricsAlignment", "LEFT")
-                    onSelected: function(value) { page.setSetting("lyricsAlignment", value) }
-                }
-
-                SettingsLabel {
-                    width: parent.width
-                    text: "歌词高亮方式"
-                }
-                SegmentedOptions {
-                    width: parent.width
-                    options: [
-                        { value: "LINE", label: "整句亮起" },
-                        { value: "WORD", label: "逐字亮起" }
-                    ]
-                    value: page.sv("lyricsHighlight", "LINE")
-                    onSelected: function(value) { page.setSetting("lyricsHighlight", value) }
-                }
-
-                SliderRow {
-                    width: parent.width
-                    label: "高亮动画时长 " + Math.round(page.sv("lyricsHighlightDuration", 220)) + "ms"
-                    from: 0
-                    to: 800
-                    decimals: 0
-                    externalValue: Number(page.sv("lyricsHighlightDuration", 220))
-                    onCommitted: function(value) { page.setSetting("lyricsHighlightDuration", Math.round(value)) }
-                }
-            }
-
-            // ============================================================ 播放页外观
-            SettingsSection {
-                width: parent.width - 24
-                x: 12
-                title: "播放页外观"
-                description: "封面形状、沉浸背景与控制条自动隐藏"
-                icon: "fullscreen"
-
-                // 用 Loader 加载，播放页外观组件缺失时退化为空，避免设置页整体加载失败
-                Loader {
-                    width: parent.width
-                    source: Qt.resolvedUrl("../components/settings/PlayerDesignSettings.qml")
-                    active: true
-                    visible: status === Loader.Ready
-                    height: status === Loader.Ready && item ? item.implicitHeight : 0
                 }
             }
 
