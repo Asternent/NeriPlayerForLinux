@@ -322,8 +322,8 @@ Item {
         Column {
             anchors.left: parent.left
             anchors.leftMargin: page.sideMargin
-            anchors.right: actions.left
-            anchors.rightMargin: Theme.spacingSm
+            anchors.right: parent.right
+            anchors.rightMargin: page.sideMargin
             anchors.verticalCenter: parent.verticalCenter
             spacing: page.compactHeader ? 0 : 2
 
@@ -371,32 +371,7 @@ Item {
             }
         }
 
-        Row {
-            id: actions
 
-            anchors.right: parent.right
-            anchors.rightMargin: page.sideMargin - 8
-            anchors.top: parent.top
-            anchors.topMargin: 12
-            spacing: 2
-
-            IconButton {
-                icon: "refresh"
-                iconSize: 22
-                size: 40
-                iconColor: page.refreshing ? Theme.primary : Theme.onSurfaceVariantColor
-                tooltip: "刷新首页"
-                onClicked: page.reload()
-            }
-
-            IconButton {
-                icon: "download"
-                iconSize: 22
-                size: 40
-                tooltip: "下载管理"
-                onClicked: Nav.openDownloadsPanel()
-            }
-        }
     }
 
     // ------------------------------------------------------------------ 首屏加载
@@ -429,9 +404,43 @@ Item {
         visible: !page.loading
         contentWidth: width
         contentHeight: contentColumn.height + 24
-        boundsBehavior: Flickable.StopAtBounds
+        // 允许下拉过头以触发刷新（松手后自动回弹）
+        boundsBehavior: Flickable.DragAndOvershootBounds
         flickableDirection: Flickable.VerticalFlick
         clip: true
+
+        // 下拉刷新指示器：内容拖到顶部以下时显示，松手超过阈值就触发 reload。
+        property real pullDistance: Math.max(0, -verticalOvershoot)
+        readonly property bool pullReady: pullDistance >= 64
+
+        onMovementEnded: {
+            if (pullReady && !page.refreshing)
+                page.reload()
+        }
+
+        Rectangle {
+            z: 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: -48
+            width: 32
+            height: 32
+            radius: 16
+            color: Theme.primary
+            opacity: Math.min(1, scroll.pullDistance / 48)
+            visible: opacity > 0
+
+            NeriIcon {
+                anchors.centerIn: parent
+                name: "refresh"
+                iconSize: 18
+                color: Theme.onPrimaryColor
+                rotation: scroll.pullDistance * 3
+
+                Behavior on rotation {
+                    NumberAnimation { duration: 80 }
+                }
+            }
+        }
 
         Column {
             id: contentColumn
