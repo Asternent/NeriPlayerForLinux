@@ -61,6 +61,12 @@ QtObject {
         return roles[name] !== undefined ? roles[name] : "#ff00ff"
     }
 
+    /**
+     * 暗色遮罩（播放页模糊背景、全屏歌词）上的浅色前景。
+     * 播放页背景始终是暗的，浅色主题下不能直接用 onSurface（会变成深色而看不清）。
+     */
+    readonly property color onScrimColor: "#F4F2F7"
+
     // ---- 常用颜色（便于直接绑定，带 420ms 过渡动画） ----
     readonly property color primary: c("primary")
     readonly property color onPrimaryColor: c("onPrimary")

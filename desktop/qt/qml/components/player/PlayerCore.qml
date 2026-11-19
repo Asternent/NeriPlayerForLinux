@@ -1,282 +1,268 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import "../"
+import ".."
 
-// 播放页核心区：封面 + 曲目信息 + 进度条 + 传输控制 + 工具行。
-// 窄屏与宽屏共用，仅封面尺寸不同（220 / 300）。
-Column {
+// 播放页左侧信息区（宽屏竖排 / 窄屏横排）：封面 + 标题 + 歌手 + 专辑。
+// 标题/歌手/专辑文字用可选中组件（支持 Ctrl+C 与右键复制菜单）；
+// 歌手/专辑的跳转入口在左侧小图标上，避免和拖选文字冲突。
+Item {
     id: core
 
-    property real coverSize: 220
+    property real coverSize: 280
+    /** 宽屏时左右留白，让填满左栏的文字不贴边。 */
+    property real contentPadding: 0
+    /** 窄屏横排：封面在左，文字在右。 */
+    property bool compact: false
+    /** 歌曲信息水平对齐（Settings.nowPlayingInfoAlignment）：LEFT / CENTER / RIGHT。 */
+    property string alignment: "LEFT"
 
-    signal lyricsRequested()
+    readonly property int alignmentMode: alignment === "CENTER" ? 1 : (alignment === "RIGHT" ? 2 : 0)
+    readonly property int textAlignment: alignmentMode === 1 ? Text.AlignHCenter
+                                          : (alignmentMode === 2 ? Text.AlignRight : Text.AlignLeft)
 
-    spacing: 0
+    signal activity()
 
-    // ---- 封面 ----
-    Item {
-        width: core.width
-        height: core.coverSize
+    readonly property var song: Player.song
+    readonly property string songTitle: Player.hasSong ? Player.title : ""
+    readonly property string songSubtitle: song && song.subtitle !== undefined && song.subtitle !== null ? String(song.subtitle) : ""
+    readonly property string songArtist: Player.hasSong ? Player.artist : ""
+    readonly property string songAlbum: Player.hasSong ? Player.album : ""
+    /** 只有名称没有合法 id 时也要能点开详情页（网易云很多歌 artistId 是 "" / "0"）。 */
+    function usableId(value) {
+        const text = value === undefined || value === null ? "" : String(value).trim()
+        if (text === "" || text === "0" || text === "null" || text === "undefined")
+            return ""
+        return text
+    }
+    readonly property string artistId: core.usableId(song ? song.artistId : "")
+    readonly property string albumId: core.usableId(song ? song.albumId : "")
+    readonly property bool artistClickable: core.songArtist !== ""
+    readonly property bool albumClickable: core.songAlbum !== ""
+    readonly property string songSource: song && song.source ? String(song.source) : "LOCAL"
+    readonly property string artworkUrl: song && song.artworkUrl ? String(song.artworkUrl) : ""
 
-        Item {
-            id: coverFrame
+    readonly property real titleSize: compact ? 20
+                                            : Math.round(Math.max(22, Math.min(34, coverSize * 0.13)))
 
-            width: core.coverSize
-            height: core.coverSize
-            anchors.horizontalCenter: parent.horizontalCenter
+    /** 供页面计算窄屏头部高度。 */
+    readonly property real contentHeight: compact ? Math.max(coverSize, compactInfo.height)
+                                                  : regularBox.height
 
-            CoverArt {
-                id: cover
+    NowPlayingTheme { id: np }
 
-                anchors.fill: parent
-                radius: 24
-                placeholderIconSize: Math.max(28, core.coverSize * 0.22)
-                path: Player.hasSong && Player.song && Player.song.artworkPath ? Player.song.artworkPath : ""
-                url: Player.hasSong && Player.song && Player.song.artworkUrl ? Player.song.artworkUrl : ""
-            }
+    function openArtist() {
+        if (!core.artistClickable)
+            return
 
-            // 缓冲/准备中：半透明遮罩 + 旋转指示器
-            Rectangle {
-                id: bufferingScrim
-
-                anchors.fill: parent
-                radius: 24
-                visible: Player.buffering || Player.state === "PREPARING"
-                color: Theme.withAlpha(Theme.scrim, 0.4)
-
-                NeriIcon {
-                    anchors.centerIn: parent
-                    name: "progress_activity"
-                    iconSize: Math.max(28, core.coverSize * 0.16)
-                    color: Theme.onPrimaryColor
-
-                    RotationAnimation on rotation {
-                        from: 0
-                        to: 360
-                        duration: 900
-                        loops: Animation.Infinite
-                        running: bufferingScrim.visible
-                    }
-                }
-            }
-        }
+        // id 可能为空（本地歌曲 / 网易云翻唱的 "0"）：传空 id + 名称，由目标页按名称搜索兜底。
+        Nav.push("remoteArtist", {
+                     "id": core.artistId,
+                     "name": core.songArtist,
+                     "avatarUrl": "",
+                     "songCount": 0,
+                     "source": core.songSource
+                 })
     }
 
-    Item {
-        width: 1
-        height: 18
+    function openAlbum() {
+        if (!core.albumClickable)
+            return
+
+        Nav.push("albumDetail", {
+                     "source": core.songSource,
+                     "id": core.albumId,
+                     "name": core.songAlbum,
+                     "coverUrl": core.artworkUrl,
+                     "creator": core.songArtist,
+                     "artistId": core.artistId,
+                     "trackCount": 0
+                 })
     }
 
-    // ---- 曲目信息 ----
+    // ---------------------------------------------------------------- 宽屏竖排
+
     Item {
-        width: core.width
-        height: titleColumn.implicitHeight
+        id: regularBox
+
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        visible: !core.compact
+        // 填满左栏（不再限制 360），只留两侧留白
+        width: Math.max(0, core.width - core.contentPadding * 2)
+        height: regularColumn.height
 
         Column {
-            id: titleColumn
+            id: regularColumn
 
             width: parent.width
-            spacing: 4
+            spacing: 0
 
-            Text {
+            // 封面跟随信息对齐方式：LEFT 贴左（与文字左边缘对齐），CENTER / RIGHT 居中 / 贴右
+            Item {
                 width: parent.width
-                text: Player.hasSong ? Player.title : ""
-                elide: Text.ElideRight
-                wrapMode: Text.NoWrap
-                color: Theme.onSurfaceColor
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.textStyle("headlineSmall").size
-                font.weight: Font.DemiBold
-                font.letterSpacing: Theme.textStyle("headlineSmall").letterSpacing
+                height: core.coverSize
+
+                NowPlayingCover {
+                    x: core.alignmentMode === 1 ? Math.round((parent.width - width) / 2)
+                       : (core.alignmentMode === 2 ? parent.width - width : 0)
+                    width: core.coverSize
+                    height: core.coverSize
+                    onActivity: core.activity()
+                }
             }
 
-            Text {
+            Item {
+                width: 1
+                height: 26
+            }
+
+            NowPlayingSelectableText {
                 width: parent.width
-                text: {
-                    if (!Player.hasSong)
-                        return ""
-                    const artist = Player.artist !== "" ? Player.artist : "未知艺术家"
-                    return Player.album !== "" ? artist + " · " + Player.album : artist
-                }
-                elide: Text.ElideRight
-                wrapMode: Text.NoWrap
-                color: Theme.onSurfaceVariantColor
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.textStyle("bodyMedium").size
-                font.letterSpacing: Theme.textStyle("bodyMedium").letterSpacing
+                text: core.songTitle
+                color: np.foreground
+                fontPixelSize: core.titleSize
+                fontWeight: Font.DemiBold
+                wrap: true
+                maximumLines: 2
+                horizontalAlignment: core.textAlignment
+                onActivity: core.activity()
+            }
+
+            Item {
+                width: 1
+                height: 4
+            }
+
+            NowPlayingSelectableText {
+                width: parent.width
+                visible: core.songSubtitle !== ""
+                text: core.songSubtitle
+                color: np.foregroundDim
+                fontPixelSize: Math.round(core.titleSize * 0.55)
+                wrap: true
+                maximumLines: 2
+                horizontalAlignment: core.textAlignment
+                onActivity: core.activity()
+            }
+
+            Item {
+                width: 1
+                height: 14
+            }
+
+            NowPlayingInfoRow {
+                width: parent.width
+                alignment: core.alignment
+                icon: "person"
+                text: core.songArtist
+                clickable: core.artistClickable
+                clickTooltip: "查看歌手详情"
+                fontPixelSize: 15
+                onClicked: core.openArtist()
+                onActivity: core.activity()
+            }
+
+            NowPlayingInfoRow {
+                width: parent.width
+                alignment: core.alignment
+                icon: "album"
+                text: core.songAlbum
+                clickable: core.albumClickable
+                clickTooltip: "查看专辑详情"
+                textColor: Theme.withAlpha(np.foreground, 0.62)
+                hoverColor: np.foreground
+                fontPixelSize: 14
+                onClicked: core.openAlbum()
+                onActivity: core.activity()
             }
         }
     }
 
-    Item {
-        width: 1
-        height: 10
-    }
+    // ---------------------------------------------------------------- 窄屏横排
 
-    // ---- 进度条 ----
-    PlayerProgressSlider {
-        width: core.width
-    }
+    Row {
+        id: compactRow
 
-    Item {
-        width: 1
-        height: 14
-    }
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        visible: core.compact
+        spacing: 20
 
-    // ---- 传输控制 ----
-    Item {
-        width: core.width
-        height: 68
+        Item {
+            width: core.coverSize
+            height: core.coverSize
 
-        RowLayout {
-            anchors.centerIn: parent
-            spacing: 18
-
-            IconButton {
-                Layout.alignment: Qt.AlignVCenter
-                icon: "shuffle"
-                iconFilled: Player.shuffle
-                iconSize: 24
-                size: 48
-                iconColor: Player.shuffle ? Theme.primary : Theme.onSurfaceColor
-                tooltip: Player.shuffle ? "随机播放：开" : "随机播放：关"
-                onClicked: Player.toggleShuffle()
-            }
-
-            IconButton {
-                Layout.alignment: Qt.AlignVCenter
-                icon: "skip_previous"
-                iconSize: 34
-                size: 52
-                iconColor: Theme.onSurfaceColor
-                tooltip: "上一首"
-                onClicked: Player.previous()
-            }
-
-            Rectangle {
-                id: playButton
-
-                Layout.alignment: Qt.AlignVCenter
-                Layout.preferredWidth: 68
-                Layout.preferredHeight: 68
-                radius: 34
-                color: playHover.hovered ? Theme.primaryContainer : Theme.primary
-
-                Behavior on color {
-                    ColorAnimation {
-                        duration: Theme.motionShort
-                    }
-                }
-
-                NeriIcon {
-                    anchors.centerIn: parent
-                    name: Player.playing ? "pause" : "play_arrow"
-                    filled: true
-                    iconSize: 36
-                    color: Theme.onPrimaryColor
-                }
-
-                HoverHandler {
-                    id: playHover
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Player.togglePlayPause()
-                }
-            }
-
-            IconButton {
-                Layout.alignment: Qt.AlignVCenter
-                icon: "skip_next"
-                iconSize: 34
-                size: 52
-                iconColor: Theme.onSurfaceColor
-                tooltip: "下一首"
-                onClicked: Player.next()
-            }
-
-            IconButton {
-                Layout.alignment: Qt.AlignVCenter
-                icon: Player.repeatMode === "ONE" ? "repeat_one" : "repeat"
-                iconFilled: Player.repeatMode !== "OFF"
-                iconSize: 24
-                size: 48
-                iconColor: Player.repeatMode === "OFF" ? Theme.onSurfaceColor : Theme.primary
-                tooltip: Player.repeatMode === "ONE" ? "单曲循环" : (Player.repeatMode === "ALL" ? "列表循环" : "不循环")
-                onClicked: Player.cycleRepeatMode()
+            NowPlayingCover {
+                anchors.fill: parent
+                onActivity: core.activity()
             }
         }
-    }
 
-    Item {
-        width: 1
-        height: 16
-    }
+        Item {
+            width: Math.max(0, core.width - core.coverSize - 20)
+            height: core.coverSize
 
-    // ---- 工具行 ----
-    Item {
-        width: core.width
-        height: 48
+            Column {
+                id: compactInfo
 
-        Row {
-            anchors.centerIn: parent
-            spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width
+                spacing: 3
 
-            IconButton {
-                icon: "volume_up"
-                iconSize: 24
-                size: 48
-                iconColor: Theme.onSurfaceVariantColor
-                tooltip: "音量"
-                onClicked: Nav.openVolumePanel()
-            }
+                NowPlayingSelectableText {
+                    width: parent.width
+                    text: core.songTitle
+                    color: np.foreground
+                    fontPixelSize: core.titleSize
+                    fontWeight: Font.DemiBold
+                    wrap: true
+                    maximumLines: 2
+                    horizontalAlignment: core.textAlignment
+                    onActivity: core.activity()
+                }
 
-            IconButton {
-                icon: "graphic_eq"
-                iconSize: 24
-                size: 48
-                iconColor: Theme.onSurfaceVariantColor
-                tooltip: "音效与倍速"
-                onClicked: Nav.openEffectsPanel()
-            }
+                NowPlayingSelectableText {
+                    width: parent.width
+                    visible: core.songSubtitle !== ""
+                    text: core.songSubtitle
+                    color: np.foregroundDim
+                    fontPixelSize: 12
+                    wrap: false
+                    horizontalAlignment: core.textAlignment
+                    onActivity: core.activity()
+                }
 
-            IconButton {
-                icon: "queue_music"
-                iconSize: 24
-                size: 48
-                iconColor: Theme.onSurfaceVariantColor
-                tooltip: "播放队列"
-                onClicked: Nav.openQueuePanel()
-            }
+                Item {
+                    width: 1
+                    height: 6
+                }
 
-            IconButton {
-                icon: "bedtime"
-                iconSize: 24
-                size: 48
-                iconColor: Player.sleepTimer && Player.sleepTimer.active ? Theme.primary : Theme.onSurfaceVariantColor
-                tooltip: "睡眠定时器"
-                onClicked: Nav.openSleepPanel()
-            }
+                NowPlayingInfoRow {
+                    width: parent.width
+                    alignment: core.alignment
+                    icon: "person"
+                    text: core.songArtist
+                    clickable: core.artistClickable
+                    clickTooltip: "查看歌手详情"
+                    fontPixelSize: 14
+                    iconSize: 16
+                    onClicked: core.openArtist()
+                    onActivity: core.activity()
+                }
 
-            IconButton {
-                icon: "download"
-                iconSize: 24
-                size: 48
-                iconColor: Theme.onSurfaceVariantColor
-                tooltip: "下载"
-                onClicked: Nav.openDownloadsPanel()
-            }
-
-            IconButton {
-                icon: "lyrics"
-                iconSize: 24
-                size: 48
-                iconColor: Theme.onSurfaceVariantColor
-                tooltip: "全屏歌词"
-                onClicked: core.lyricsRequested()
+                NowPlayingInfoRow {
+                    width: parent.width
+                    alignment: core.alignment
+                    icon: "album"
+                    text: core.songAlbum
+                    clickable: core.albumClickable
+                    clickTooltip: "查看专辑详情"
+                    textColor: Theme.withAlpha(np.foreground, 0.62)
+                    hoverColor: np.foreground
+                    fontPixelSize: 12
+                    iconSize: 15
+                    onClicked: core.openAlbum()
+                    onActivity: core.activity()
+                }
             }
         }
     }
