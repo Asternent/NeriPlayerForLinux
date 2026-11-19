@@ -82,6 +82,38 @@ object ArtworkApi {
                 buildJsonObject { put("removed", removed) }
             }
         }
+
+        // 播放页封面右键「保存封面」：把本地 / 远程封面另存到用户选择的路径。
+        // 参数同时带 url 与 path 时优先本地文件，前端不用关心封面当前是否已在缓存里。
+        server.on("artwork.saveAs") { params ->
+            val url = params.stringOrNull("url")?.trim()?.takeIf { it.isNotEmpty() }
+            val path = params.stringOrNull("path")?.trim()?.takeIf { it.isNotEmpty() }
+            val target = params.stringOrNull("target")?.trim()?.takeIf { it.isNotEmpty() }
+                ?: badRequest("缺少 target")
+            val referer = params.stringOrNull("referer")?.takeIf { it.isNotBlank() }
+            withContext(Dispatchers.IO) {
+                val source = when {
+                    path != null -> localFileOf(path)?.takeIf { it.isFile && it.length() > 0L }
+                        ?: return@withContext saveResult(false, null, "本地封面文件不存在或为空: $path")
+
+                    url != null -> {
+                        val resolved = resolveToCache(http, url, referer ?: defaultReferer(url))
+                        val resolvedPath = resolved.stringOrNull("path")
+                        if (resolvedPath.isNullOrEmpty()) {
+                            return@withContext saveResult(
+                                false,
+                                null,
+                                resolved.stringOrNull("error") ?: "封面下载失败"
+                            )
+                        }
+                        File(resolvedPath)
+                    }
+
+                    else -> return@withContext saveResult(false, null, "缺少 url 或 path")
+                }
+                saveFileTo(source, target)
+            }
+        }
     }
 
     // ------------------------------------------------------------------ 下载与缓存
@@ -153,6 +185,69 @@ object ArtworkApi {
         put("path", path)
         put("cached", cached)
     }
+
+    /** `artwork.saveAs` 的结果；失败不抛协议错误，与其它 artwork 命令保持一致。 */
+    private fun saveResult(ok: Boolean, path: String?, error: String? = null): JsonObject = buildJsonObject {
+        put("ok", ok)
+        if (path != null) put("path", path) else put("path", JsonNull)
+        if (error != null) put("error", error)
+    }
+
+    /**
+     * 把封面文件复制到用户指定的路径。
+     * 目标没有可识别的图片后缀时按内容补一个，避免出现 `cover.img` 这种打不开的文件名。
+     */
+    private fun saveFileTo(source: File, rawTarget: String): JsonObject {
+        val bytes = runCatching { source.readBytes() }.getOrElse {
+            return saveResult(false, null, "读取封面文件失败: ${source.absolutePath}")
+        }
+        if (bytes.isEmpty()) {
+            return saveResult(false, null, "封面文件为空: ${source.absolutePath}")
+        }
+
+        var target = File(rawTarget)
+        if (!target.isAbsolute) {
+            return saveResult(false, null, "target 必须是绝对路径: $rawTarget")
+        }
+        if (target.isDirectory) {
+            return saveResult(false, null, "target 是目录，需要指定文件名: $rawTarget")
+        }
+        val extension = target.extension.lowercase()
+        if (extension !in IMAGE_EXTENSIONS) {
+            val detected = detectImageExtension(bytes)
+            if (!detected.isNullOrEmpty()) {
+                target = File(target.parentFile, target.name + "." + detected)
+            }
+        }
+
+        val written = runCatching {
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+        }.isSuccess
+        if (!written) {
+            return saveResult(false, null, "封面保存失败（目标路径不可写）: ${target.absolutePath}")
+        }
+        log("artwork saved: ${target.absolutePath} (${bytes.size} bytes)")
+        return saveResult(true, target.absolutePath)
+    }
+
+    private fun detectImageExtension(bytes: ByteArray): String? {
+        fun at(index: Int): Int = bytes[index].toInt() and 0xFF
+        if (bytes.size >= 4) {
+            if (at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF) return "jpg"
+            if (at(0) == 0x89 && at(1) == 0x50 && at(2) == 0x4E && at(3) == 0x47) return "png"
+            if (at(0) == 0x47 && at(1) == 0x49 && at(2) == 0x46) return "gif"
+            if (at(0) == 0x42 && at(1) == 0x4D) return "bmp"
+        }
+        if (bytes.size >= 12) {
+            val riff = at(0) == 0x52 && at(1) == 0x49 && at(2) == 0x46 && at(3) == 0x46
+            if (riff && at(8) == 0x57 && at(9) == 0x45 && at(10) == 0x42 && at(11) == 0x50) return "webp"
+            if (at(4) == 0x66 && at(5) == 0x74 && at(6) == 0x79 && at(7) == 0x70) return "avif"
+        }
+        return null
+    }
+
+    private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "avif")
 
     private fun errorResult(message: String): JsonObject = buildJsonObject {
         put("path", JsonNull)
