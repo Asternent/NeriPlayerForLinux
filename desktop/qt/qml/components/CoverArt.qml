@@ -35,11 +35,17 @@ Item {
         + "'><rect width='" + maskWidth + "' height='" + maskHeight + "' rx='" + maskRadius
         + "' ry='" + maskRadius + "' fill='#ffffff'/></svg>")
 
-    /** 解码尺寸：按当前显示尺寸 × 设备像素比；尺寸还没确定时为 0（表示按原图）。 */
+    /**
+     * 解码尺寸：固定按显示尺寸的 2 倍解码，**不跟随 Screen.devicePixelRatio**。
+     *
+     * 窗口在不同缩放的屏幕之间移动时 devicePixelRatio 会变化，如果解码尺寸跟着变，
+     * 所有封面的 Image.sourceSize 都会变，Qt 会重新解码/重传纹理，视觉上像整页封面重新加载。
+     * 固定 2 倍采样在 1x / 2x 屏幕上都不糊，同时尺寸稳定不会触发重载；大图封顶 1024 控制内存。
+     */
     readonly property int decodeWidth: width > 0
-        ? Math.max(1, Math.round(width * Screen.devicePixelRatio)) : 0
+        ? Math.min(1024, Math.max(1, Math.round(width * 2))) : 0
     readonly property int decodeHeight: height > 0
-        ? Math.max(1, Math.round(height * Screen.devicePixelRatio)) : 0
+        ? Math.min(1024, Math.max(1, Math.round(height * 2))) : 0
 
     function resolveRemote() {
         if ((path !== "" && path !== undefined) || url === "" || url === undefined) {
