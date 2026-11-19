@@ -5,7 +5,7 @@ import "../components"
 import "../components/settings"
 
 // 设置页：卡片式分组，对齐旧 Compose 设置页（主题 / 媒体库 / 播放 / 下载 / 悬浮歌词 /
-// 后台与系统控制 / 账号 / 同步 / 快捷键 / 关于）。所有修改即时通过 Settings / Api 生效。
+// 后台与系统控制 / 音乐源 / 同步 / 快捷键 / 关于）。所有修改即时通过 Settings / Api 生效。
 Item {
     id: page
 
@@ -337,7 +337,7 @@ Item {
         }
     }
 
-    // ---------------------------------------------------------------- 账号
+    // ---------------------------------------------------------------- 音乐源 / 账号
 
     function applyAccounts(list) {
         // C++ 桥现在会下发真正的 JS 数组；同时兼容旧式 QVariantList 序列对象。
@@ -391,6 +391,31 @@ Item {
             page.loadAccounts()
         }).catch(function(error) {
             Toast.show("退出登录失败：" + (error && error.message ? error.message : "未知错误"), "error")
+        })
+    }
+
+    /** 音乐源「登录 / 退出」统一入口：YouTube 走 Cookie 面板与 ytmusic.logout，其它两源扫码登录。 */
+    function toggleSourceAccount(source) {
+        if (page.findAccount(source)) {
+            page.logoutSource(source)
+            return
+        }
+        if (source === "YOUTUBE")
+            Nav.openYouTubeLoginPanel()
+        else
+            Nav.openLoginPanel(source)
+    }
+
+    function logoutSource(source) {
+        if (source !== "YOUTUBE") {
+            page.logoutAccount(source)
+            return
+        }
+        Api.call("ytmusic.logout").then(function() {
+            Toast.show("已退出 YouTube Music", "info")
+            page.loadAccounts()
+        }).catch(function(error) {
+            Toast.show("退出失败：" + (error && error.message ? error.message : "未知错误"), "error")
         })
     }
 
@@ -1484,7 +1509,7 @@ Item {
                 width: parent.width - 24
                 x: 12
                 title: "首页栏目"
-                description: "选择首页展示哪些推荐栏目"
+                description: "选择首页展示哪些推荐栏目（未登录 / 音源禁用时对应栏目不会出现）"
                 icon: "dashboard"
 
                 SettingsSwitchRow {
@@ -1497,24 +1522,64 @@ Item {
 
                 SettingsSwitchRow {
                     width: parent.width
-                    title: "为你推荐"
-                    description: "根据口味生成的推荐歌单"
-                    checked: page.homeCardEnabled("recommended", true)
-                    onToggled: function(checked) { page.setHomeCard("recommended", checked) }
+                    title: "猜你喜欢"
+                    description: "根据收听口味生成的歌曲推荐"
+                    checked: page.homeCardEnabled("guessYouLike", true)
+                    onToggled: function(checked) { page.setHomeCard("guessYouLike", checked) }
                 }
 
                 SettingsSwitchRow {
                     width: parent.width
-                    title: "热歌榜"
-                    description: "热门歌曲榜单"
-                    checked: page.homeCardEnabled("hotTracks", true)
-                    onToggled: function(checked) { page.setHomeCard("hotTracks", checked) }
+                    title: "每日推荐"
+                    description: "每天更新的 30 首推荐（需登录网易云）"
+                    checked: page.homeCardEnabled("dailyRecommend", true)
+                    onToggled: function(checked) { page.setHomeCard("dailyRecommend", checked) }
                 }
 
                 SettingsSwitchRow {
                     width: parent.width
-                    title: "私人雷达"
-                    description: "个性化探索"
+                    title: "私人 FM"
+                    description: "根据口味连续推荐的歌曲（需登录网易云）"
+                    checked: page.homeCardEnabled("privateFm", true)
+                    onToggled: function(checked) { page.setHomeCard("privateFm", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "B站音乐"
+                    description: "哔哩哔哩音乐榜与音乐区热门视频"
+                    checked: page.homeCardEnabled("biliMusic", true)
+                    onToggled: function(checked) { page.setHomeCard("biliMusic", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "排行榜"
+                    description: "热歌榜、飙升榜与新歌榜"
+                    checked: page.homeCardEnabled("ranks", true)
+                    onToggled: function(checked) { page.setHomeCard("ranks", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "推荐歌单"
+                    description: "个性化推荐、精品与热门歌单"
+                    checked: page.homeCardEnabled("playlists", true)
+                    onToggled: function(checked) { page.setHomeCard("playlists", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "推荐新歌"
+                    description: "最近发布的新歌推荐"
+                    checked: page.homeCardEnabled("newSongs", true)
+                    onToggled: function(checked) { page.setHomeCard("newSongs", checked) }
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "雷达歌单"
+                    description: "时光 / 宝藏 / 新歌 / 乐迷 / 神秘雷达"
                     checked: page.homeCardEnabled("radar", true)
                     onToggled: function(checked) { page.setHomeCard("radar", checked) }
                 }
@@ -1589,20 +1654,40 @@ Item {
                 }
             }
 
-            // ============================================================ 在线音源
+            // ============================================================ 音乐源
             SettingsSection {
+                id: musicSourceSection
                 width: parent.width - 24
                 x: 12
-                title: "在线音源"
-                description: "网易云、哔哩哔哩与 YouTube 开关"
+                title: "音乐源"
+                description: "网易云 / 哔哩哔哩 / YouTube 的开关与账号登录"
                 icon: "cloud"
 
                 SettingsSwitchRow {
                     width: parent.width
                     title: "网易云音乐"
-                    description: "搜索、推荐、播放与歌词（无需登录即可使用公开接口）"
+                    description: "搜索、推荐、播放与歌词；未登录也可使用公开接口"
                     checked: page.sb("neteaseEnabled", true)
                     onToggled: function(checked) { page.setSetting("neteaseEnabled", checked) }
+                }
+
+                SettingsRow {
+                    width: parent.width
+                    title: page.findAccount("NETEASE") ? page.accountName(page.findAccount("NETEASE"))
+                                                        : "网易云：未登录"
+                    description: page.findAccount("NETEASE")
+                                 ? "已登录 · " + page.accountDetail(page.findAccount("NETEASE"), "")
+                                 : "未登录：扫码登录后可解锁每日推荐、私人 FM 与每日推荐歌单"
+
+                    SettingsButton {
+                        text: page.findAccount("NETEASE") ? "退出登录" : "扫码登录"
+                        onClicked: page.toggleSourceAccount("NETEASE")
+                    }
+                }
+
+                Item {
+                    width: 1
+                    height: 6
                 }
 
                 SettingsSwitchRow {
@@ -1613,12 +1698,68 @@ Item {
                     onToggled: function(checked) { page.setSetting("bilibiliEnabled", checked) }
                 }
 
+                SettingsRow {
+                    width: parent.width
+                    title: page.findAccount("BILIBILI") ? page.accountName(page.findAccount("BILIBILI"))
+                                                        : "哔哩哔哩：未登录"
+                    description: page.findAccount("BILIBILI")
+                                 ? "已登录 · " + page.accountDetail(page.findAccount("BILIBILI"), "")
+                                 : "未登录：可搜索与播放视频音频轨，收藏夹需要登录"
+
+                    SettingsButton {
+                        text: page.findAccount("BILIBILI") ? "退出登录" : "扫码登录"
+                        onClicked: page.toggleSourceAccount("BILIBILI")
+                    }
+                }
+
+                Item {
+                    width: 1
+                    height: 6
+                }
+
                 SettingsSwitchRow {
                     width: parent.width
                     title: "YouTube Music"
                     description: "登录后可浏览与播放；未登录时仅能搜索公开内容"
                     checked: page.sb("youtubeEnabled", false)
                     onToggled: function(checked) { page.setSetting("youtubeEnabled", checked) }
+                }
+
+                SettingsRow {
+                    width: parent.width
+                    title: page.findAccount("YOUTUBE") ? page.accountName(page.findAccount("YOUTUBE"))
+                                                       : "YouTube：未登录"
+                    description: page.findAccount("YOUTUBE")
+                                 ? "已登录 · " + page.accountDetail(page.findAccount("YOUTUBE"), "")
+                                 : "未登录：只能搜索公开内容，登录需从浏览器复制 Cookie"
+
+                    SettingsButton {
+                        text: page.findAccount("YOUTUBE") ? "退出登录" : "登录"
+                        onClicked: page.toggleSourceAccount("YOUTUBE")
+                    }
+                }
+
+                Item {
+                    width: 1
+                    height: 8
+                }
+
+                SettingsSwitchRow {
+                    width: parent.width
+                    title: "自动换源"
+                    description: "网易云不可播放（VIP / 版权 / 接口限制）时，自动到 B 站搜索同名歌曲播放"
+                    checked: page.sb("neteaseAutoSourceSwitch", true)
+                    onToggled: function(checked) { page.setSetting("neteaseAutoSourceSwitch", checked) }
+                }
+
+                Item {
+                    width: 1
+                    height: 4
+                }
+
+                SettingsNote {
+                    width: parent.width
+                    text: "登录凭据（Cookie）仅保存在本机配置目录。关闭某个音源后，它的栏目与账号歌单会在首页 / 媒体库中隐藏。"
                 }
             }
 
@@ -1643,97 +1784,6 @@ Item {
                 SettingsNote {
                     width: parent.width
                     text: "桌面端与 Android 端共用同一套一起听协议，可在同一个房间里同步播放。"
-                }
-            }
-
-            // ============================================================ 账号
-            SettingsSection {
-                width: parent.width - 24
-                x: 12
-                title: "账号"
-                description: "网易云 / 哔哩哔哩扫码登录，YouTube 粘贴 Cookie 登录"
-                icon: "account_circle"
-
-                SettingsRow {
-                    width: parent.width
-                    title: {
-                        const account = page.findAccount("NETEASE")
-                        return account ? page.accountName(account) : "网易云音乐"
-                    }
-                    description: page.accountDetail(page.findAccount("NETEASE"),
-                                                   "未登录：仅能使用公开搜索、推荐与试听音质")
-
-                    SettingsButton {
-                        text: page.findAccount("NETEASE") ? "退出登录" : "扫码登录"
-                        onClicked: {
-                            if (page.findAccount("NETEASE"))
-                                page.logoutAccount("NETEASE")
-                            else
-                                Nav.openLoginPanel("NETEASE")
-                        }
-                    }
-                }
-
-                SettingsRow {
-                    width: parent.width
-                    title: {
-                        const account = page.findAccount("BILIBILI")
-                        return account ? page.accountName(account) : "哔哩哔哩"
-                    }
-                    description: page.accountDetail(page.findAccount("BILIBILI"),
-                                                   "未登录：可搜索与播放视频音频轨，收藏夹需要登录")
-
-                    SettingsButton {
-                        text: page.findAccount("BILIBILI") ? "退出登录" : "扫码登录"
-                        onClicked: {
-                            if (page.findAccount("BILIBILI"))
-                                page.logoutAccount("BILIBILI")
-                            else
-                                Nav.openLoginPanel("BILIBILI")
-                        }
-                    }
-                }
-
-                Item {
-                    width: 1
-                    height: 6
-                }
-
-                SettingsRow {
-                    width: parent.width
-                    title: {
-                        const account = page.findAccount("YOUTUBE")
-                        return account ? page.accountName(account) : "YouTube Music"
-                    }
-                    description: page.findAccount("YOUTUBE")
-                                 ? "已登录：可浏览推荐、专辑与个人歌单"
-                                 : "未登录：只能搜索公开内容；登录需从浏览器复制 Cookie"
-
-                    SettingsButton {
-                        text: page.findAccount("YOUTUBE") ? "退出登录" : "登录"
-                        onClicked: {
-                            if (page.findAccount("YOUTUBE")) {
-                                Api.call("ytmusic.logout").then(function() {
-                                    Toast.show("已退出 YouTube Music", "info")
-                                    page.loadAccounts()
-                                }).catch(function(error) {
-                                    Toast.show("退出失败：" + (error && error.message ? error.message : "未知错误"), "error")
-                                })
-                            } else {
-                                Nav.openYouTubeLoginPanel()
-                            }
-                        }
-                    }
-                }
-
-                Item {
-                    width: 1
-                    height: 6
-                }
-
-                SettingsNote {
-                    width: parent.width
-                    text: "登录后可浏览收藏与我的歌单。登录凭据（Cookie）仅保存在本机配置目录。"
                 }
             }
 
