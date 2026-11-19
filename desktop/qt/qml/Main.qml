@@ -114,6 +114,17 @@ ApplicationWindow {
         Nav.openByName(name)
     }
 
+    /** --page 带 --arg 时使用：arg 是 JSON 字符串，解析后传给路由。 */
+    function openPageArgByName(name, argJson) {
+        let arg = undefined
+        try {
+            arg = JSON.parse(argJson)
+        } catch (e) {
+            arg = argJson
+        }
+        Nav.openByName(name, arg)
+    }
+
     function openPage(name, arg) {
         Nav.openByName(name, arg)
     }

@@ -1461,6 +1461,24 @@ Item {
                 }
             }
 
+            // ============================================================ 播放页外观
+            SettingsSection {
+                width: parent.width - 24
+                x: 12
+                title: "播放页外观"
+                description: "封面形状、沉浸背景与控制条自动隐藏"
+                icon: "fullscreen"
+
+                // 用 Loader 加载，播放页外观组件缺失时退化为空，避免设置页整体加载失败
+                Loader {
+                    width: parent.width
+                    source: Qt.resolvedUrl("../components/settings/PlayerDesignSettings.qml")
+                    active: true
+                    visible: status === Loader.Ready
+                    height: status === Loader.Ready && item ? item.implicitHeight : 0
+                }
+            }
+
             // ============================================================ 首页栏目
             SettingsSection {
                 width: parent.width - 24
@@ -1598,10 +1616,33 @@ Item {
                 SettingsSwitchRow {
                     width: parent.width
                     title: "YouTube Music"
-                    description: "桌面端暂未接入（需要账号授权与专用解析）"
-                    checked: false
-                    enabled: false
-                    onToggled: function(checked) {}
+                    description: "登录后可浏览与播放；未登录时仅能搜索公开内容"
+                    checked: page.sb("youtubeEnabled", false)
+                    onToggled: function(checked) { page.setSetting("youtubeEnabled", checked) }
+                }
+            }
+
+            // ============================================================ 一起听
+            SettingsSection {
+                width: parent.width - 24
+                x: 12
+                title: "一起听"
+                description: "与手机端实时同步播放的自建房间"
+                icon: "group"
+
+                SettingsRow {
+                    width: parent.width
+                    title: "一起听房间"
+                    description: "需要先配置自己的 NeriPlayer-LTW 服务端地址；面板里可创建或加入房间"
+                    SettingsButton {
+                        text: "打开一起听"
+                        onClicked: Nav.openListenTogetherPanel()
+                    }
+                }
+
+                SettingsNote {
+                    width: parent.width
+                    text: "桌面端与 Android 端共用同一套一起听协议，可在同一个房间里同步播放。"
                 }
             }
 
@@ -1610,7 +1651,7 @@ Item {
                 width: parent.width - 24
                 x: 12
                 title: "账号"
-                description: "网易云与哔哩哔哩扫码登录"
+                description: "网易云 / 哔哩哔哩扫码登录，YouTube 粘贴 Cookie 登录"
                 icon: "account_circle"
 
                 SettingsRow {
@@ -1649,6 +1690,38 @@ Item {
                                 page.logoutAccount("BILIBILI")
                             else
                                 Nav.openLoginPanel("BILIBILI")
+                        }
+                    }
+                }
+
+                Item {
+                    width: 1
+                    height: 6
+                }
+
+                SettingsRow {
+                    width: parent.width
+                    title: {
+                        const account = page.findAccount("YOUTUBE")
+                        return account ? page.accountName(account) : "YouTube Music"
+                    }
+                    description: page.findAccount("YOUTUBE")
+                                 ? "已登录：可浏览推荐、专辑与个人歌单"
+                                 : "未登录：只能搜索公开内容；登录需从浏览器复制 Cookie"
+
+                    SettingsButton {
+                        text: page.findAccount("YOUTUBE") ? "退出登录" : "登录"
+                        onClicked: {
+                            if (page.findAccount("YOUTUBE")) {
+                                Api.call("ytmusic.logout").then(function() {
+                                    Toast.show("已退出 YouTube Music", "info")
+                                    page.loadAccounts()
+                                }).catch(function(error) {
+                                    Toast.show("退出失败：" + (error && error.message ? error.message : "未知错误"), "error")
+                                })
+                            } else {
+                                Nav.openYouTubeLoginPanel()
+                            }
                         }
                     }
                 }

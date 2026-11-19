@@ -5,6 +5,9 @@ import kotlinx.coroutines.awaitCancellation
 import moe.ouom.neriplayer.desktop.backend.api.AppApi
 import moe.ouom.neriplayer.desktop.backend.api.ArtworkApi
 import moe.ouom.neriplayer.desktop.backend.api.CollectionsApi
+import moe.ouom.neriplayer.desktop.backend.api.CommentsApi
+import moe.ouom.neriplayer.desktop.backend.api.ListenTogetherApi
+import moe.ouom.neriplayer.desktop.backend.api.YouTubeMusicApi
 import moe.ouom.neriplayer.desktop.backend.api.DownloadApi
 import moe.ouom.neriplayer.desktop.backend.api.LibraryApi
 import moe.ouom.neriplayer.desktop.backend.api.LoginApi
@@ -43,6 +46,9 @@ fun main(args: Array<String>) {
     PlayerApi.register(server, container)
     LibraryApi.register(server, container)
     CollectionsApi.register(server, container)
+    CommentsApi.register(server, container)
+    ListenTogetherApi.register(server, container)
+    YouTubeMusicApi.register(server, container)
     OnlineApi.register(server, container)
     LoginApi.register(server, container)
     DownloadApi.register(server, container)

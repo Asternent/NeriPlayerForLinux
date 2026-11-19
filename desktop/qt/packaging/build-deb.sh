@@ -84,7 +84,7 @@ Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6qml6 | 
  qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-dialogs,
  qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtcore, qml6-module-qtnetwork,
  python3, python3-gi, gir1.2-glib-2.0, gir1.2-gtk-3.0, fonts-noto-cjk
-Recommends: ffmpeg, xdg-utils
+Recommends: ffmpeg, yt-dlp, xdg-utils
 Homepage: https://github.com/Asternent/NeriPlayerForLinux
 CONTROL
 

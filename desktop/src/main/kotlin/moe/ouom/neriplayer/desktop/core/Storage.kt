@@ -107,6 +107,14 @@ data class AppSettings(
     val coverShowsLyrics: Boolean = true,
     val showNowPlayingTitle: Boolean = true,
     val songTitleMarquee: Boolean = true,
+    /** 播放页封面形状：CIRCLE / ROUNDED / SQUARE。 */
+    val nowPlayingCoverShape: String = "ROUNDED",
+    /** 播放页背景：BLUR=封面模糊，GRADIENT=渐变色块，SOLID=纯色。 */
+    val nowPlayingBackground: String = "BLUR",
+    /** 沉浸模式下鼠标静止一段时间后淡出控制条，只保留歌词与封面。 */
+    val nowPlayingAutoHideControls: Boolean = true,
+    /** 控制条自动隐藏延迟（毫秒）。 */
+    val nowPlayingAutoHideDelayMs: Int = 2600,
     /** 界面缩放（HiDPI）：0 = 跟随桌面缩放，其余为 1.0 / 1.25 / 1.5 … 的固定比例。 */
     val uiScale: Float = 0f,
     val qualityPreference: String = "exhigh",

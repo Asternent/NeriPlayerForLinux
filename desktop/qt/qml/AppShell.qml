@@ -222,6 +222,8 @@ Item {
             return "pages/OnlineCollectionPage.qml"
         case "remoteArtist":
             return "pages/RemoteArtistPage.qml"
+        case "albumDetail":
+            return "pages/AlbumDetailPage.qml"
         default:
             return "pages/HomePage.qml"
         }

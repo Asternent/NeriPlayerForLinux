@@ -29,6 +29,12 @@ Item {
                 return "panels/DownloadsPanel.qml"
             case "login":
                 return "panels/LoginPanel.qml"
+            case "comments":
+                return "panels/CommentsPanel.qml"
+            case "listenTogether":
+                return "panels/ListenTogetherPanel.qml"
+            case "youtubeLogin":
+                return "panels/YouTubeLoginPanel.qml"
             default:
                 return ""
             }

@@ -124,3 +124,6 @@ java -jar build/libs/neriplayer-core.jar [--socket <path>] [--no-scan]
 - `protocol-login.md`（扫码登录）
 - `protocol-download.md`（下载）
 - `protocol-sync.md`（GitHub 同步）
+- `protocol-comments.md`（歌曲评论）
+- `protocol-youtube.md`（YouTube Music 音源）
+- `protocol-listen-together.md`（一起听房间同步）
