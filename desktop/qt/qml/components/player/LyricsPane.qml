@@ -22,6 +22,10 @@ Item {
     property bool edgeFade: true
     /** 用户手动滚动后暂停自动跟随，静止一会儿再恢复。 */
     property bool autoScrollPaused: false
+    /** 手动滚动停止后，等待多久再平滑回当前行。 */
+    property int resumeDelay: 2000
+    /** 用户正在拖动（歌词内容或滚动条）；拖动期间绝不自动跟随，避免抢位置。 */
+    property bool _dragging: false
 
     // 只把「真的在动」的鼠标算作活动：歌词重排时 Qt 会向静止的指针补发 hover 事件，
     // 若不过滤，控制条会被反复唤醒、永远不自动隐藏。
@@ -53,6 +57,18 @@ Item {
         return (typeof d === "number" && d >= 0) ? d : 220
     }
 
+    /** 歌词水平对齐（Settings.lyricsAlignment：LEFT / CENTER / RIGHT）。 */
+    readonly property string alignment: {
+        const value = Settings.get("lyricsAlignment", "LEFT")
+        return (value === "CENTER" || value === "RIGHT") ? value : "LEFT"
+    }
+    readonly property int alignmentMode: alignment === "CENTER" ? 1 : (alignment === "RIGHT" ? 2 : 0)
+    readonly property int textAlignment: alignmentMode === 1 ? Text.AlignHCenter
+                                         : (alignmentMode === 2 ? Text.AlignRight : Text.AlignLeft)
+    // 当前行放大是用 scale 做的，transformOrigin 不跟着对齐方式走的话文字会往反方向漂。
+    readonly property int scaleOrigin: alignmentMode === 1 ? Item.Center
+                                       : (alignmentMode === 2 ? Item.Right : Item.Left)
+
     readonly property real mainFontSize: Math.max(12, baseFontSize * fontScale)
     readonly property real mainLineHeight: Math.round(mainFontSize * 1.42)
     readonly property real translationFontSize: Math.round(mainFontSize * translationScale)
@@ -80,6 +96,35 @@ Item {
         return pane.showTranslation && line
                 && line.translation !== undefined && line.translation !== null
                 && line.translation !== ""
+    }
+
+    // ---------------------------------------------------------------- 手动滚动
+
+    /** 开始拖动（歌词内容拖动 / 滚动条拖动）：立刻暂停跟随并停掉正在跑的滚动动画。 */
+    function beginUserScroll() {
+        if (!autoScroll)
+            return
+        _dragging = true
+        autoScrollPaused = true
+        resumeTimer.stop()
+        scrollAnimation.stop()
+    }
+
+    /** 拖动结束：留出静置时间后再平滑回当前行。 */
+    function endUserScroll() {
+        _dragging = false
+        if (!autoScroll)
+            return
+        autoScrollPaused = true
+        resumeTimer.restart()
+    }
+
+    /** 非拖动式的用户滚动（滚轮 / 点击滚动条轨道）：每次动作都重新计时。 */
+    function noteUserScroll() {
+        if (!autoScroll || _dragging)
+            return
+        autoScrollPaused = true
+        resumeTimer.restart()
     }
 
     // ---------------------------------------------------------------- 状态占位
@@ -134,11 +179,23 @@ Item {
         cacheBuffer: Math.max(0, height * 1.5)
 
         NeriScrollBar {
+            id: lyricsScrollBar
+
             anchors.right: list.right
             anchors.top: list.top
             anchors.bottom: list.bottom
             width: 8
             flickable: list
+
+            // 滚动条是直接改 contentY 的，不会触发 ListView 的 movementStarted/Ended，
+            // 必须在这里把拖动状态转给 LyricsPane，否则自动跟随会一直和用户抢位置。
+            onDraggingChanged: {
+                if (dragging)
+                    pane.beginUserScroll()
+                else
+                    pane.endUserScroll()
+            }
+            onScrolled: pane.noteUserScroll()
         }
 
         delegate: Item {
@@ -187,7 +244,7 @@ Item {
 
                 // 当前行放大、其余行略缩小，用 scale 做平滑过渡（font.pixelSize 不能动画）
                 scale: active ? 1.0 : 0.9
-                transformOrigin: Item.Left
+                transformOrigin: pane.scaleOrigin
                 opacity: active ? 1.0 : 0.46
 
                 Behavior on scale {
@@ -201,6 +258,12 @@ Item {
                     id: mainLine
 
                     readonly property real glowPad: Math.round(pane.mainFontSize * 0.9)
+                    // 逐字高亮的裁切窗口要落在文字实际起始位置，否则中间/右对齐时会裁错边
+                    readonly property real textWidth: Math.min(width, mainText.contentWidth)
+                    readonly property real highlightX: pane.alignmentMode === 1
+                                                       ? Math.max(0, (width - textWidth) / 2)
+                                                       : (pane.alignmentMode === 2
+                                                          ? Math.max(0, width - textWidth) : 0)
 
                     width: parent.width
                     height: mainText.implicitHeight
@@ -222,6 +285,7 @@ Item {
                             text: lineDelegate.modelData.text !== "" ? lineDelegate.modelData.text : "♪"
                             wrapMode: Text.Wrap
                             textFormat: Text.PlainText
+                            horizontalAlignment: pane.textAlignment
                             color: np.accent
                             font.family: Theme.fontFamily
                             font.pixelSize: pane.mainFontSize
@@ -250,6 +314,7 @@ Item {
                         text: lineDelegate.modelData.text !== "" ? lineDelegate.modelData.text : "♪"
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
+                        horizontalAlignment: pane.textAlignment
                         color: Theme.withAlpha(np.foreground,
                                               pane.wordHighlight && lineDelegate.active ? 0.42 : 1.0)
                         font.family: Theme.fontFamily
@@ -267,7 +332,8 @@ Item {
                     // （按列宽算的话，短句会整行都被覆盖）
                     Item {
                         visible: pane.wordHighlight && lineDelegate.active
-                        width: Math.min(mainLine.width, mainText.contentWidth) * pane.lineProgress
+                        x: mainLine.highlightX
+                        width: mainLine.textWidth * pane.lineProgress
                         height: parent.height
                         clip: true
 
@@ -276,6 +342,7 @@ Item {
                             text: lineDelegate.modelData.text !== "" ? lineDelegate.modelData.text : "♪"
                             wrapMode: Text.Wrap
                             textFormat: Text.PlainText
+                            horizontalAlignment: pane.textAlignment
                             color: np.accent
                             font.family: Theme.fontFamily
                             font.pixelSize: pane.mainFontSize
@@ -292,6 +359,7 @@ Item {
                     text: lineDelegate.translated ? lineDelegate.modelData.translation : ""
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
+                    horizontalAlignment: pane.textAlignment
                     color: lineDelegate.active
                            ? Theme.withAlpha(np.foreground, 0.78)
                            : Theme.withAlpha(np.foreground, 0.45)
@@ -334,11 +402,8 @@ Item {
         // 行高要等 delegate 实例化后才准，contentHeight 变化后补一次定位
         onContentHeightChanged: Qt.callLater(pane.scrollToCurrent, false)
 
-        onMovementStarted: {
-            pane.autoScrollPaused = true
-            resumeTimer.stop()
-        }
-        onMovementEnded: resumeTimer.restart()
+        onMovementStarted: pane.beginUserScroll()
+        onMovementEnded: pane.endUserScroll()
     }
 
     /** 把当前行滚到阅读位置（视口中上部）；animate=false 用于切歌/首次布局。 */
@@ -357,7 +422,7 @@ Item {
         const target = list.contentY
         list.contentY = oldY
         const distance = Math.abs(target - oldY)
-        if (!animate || distance > list.height * 1.5) {
+        if (!animate) {
             scrollAnimation.stop()
             list.contentY = target
             return
@@ -367,12 +432,14 @@ Item {
         scrollAnimation.stop()
         scrollAnimation.from = oldY
         scrollAnimation.to = target
+        // 远距离也是平滑动画，只是时长按距离放大（320~600ms），不再瞬移
+        scrollAnimation.duration = Math.max(320, Math.min(600, Math.round(distance * 0.8)))
         scrollAnimation.start()
     }
 
     Timer {
         id: resumeTimer
-        interval: 2500
+        interval: pane.resumeDelay
         repeat: false
         onTriggered: {
             pane.autoScrollPaused = false

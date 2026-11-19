@@ -26,8 +26,17 @@ Item {
     readonly property string songSubtitle: song && song.subtitle !== undefined && song.subtitle !== null ? String(song.subtitle) : ""
     readonly property string songArtist: Player.hasSong ? Player.artist : ""
     readonly property string songAlbum: Player.hasSong ? Player.album : ""
-    readonly property string artistId: song && song.artistId !== undefined && song.artistId !== null ? String(song.artistId) : ""
-    readonly property string albumId: song && song.albumId !== undefined && song.albumId !== null ? String(song.albumId) : ""
+    /** 只有名称没有合法 id 时也要能点开详情页（网易云很多歌 artistId 是 "" / "0"）。 */
+    function usableId(value) {
+        const text = value === undefined || value === null ? "" : String(value).trim()
+        if (text === "" || text === "0" || text === "null" || text === "undefined")
+            return ""
+        return text
+    }
+    readonly property string artistId: core.usableId(song ? song.artistId : "")
+    readonly property string albumId: core.usableId(song ? song.albumId : "")
+    readonly property bool artistClickable: core.songArtist !== ""
+    readonly property bool albumClickable: core.songAlbum !== ""
     readonly property string songSource: song && song.source ? String(song.source) : "LOCAL"
     readonly property string artworkUrl: song && song.artworkUrl ? String(song.artworkUrl) : ""
 
@@ -41,8 +50,10 @@ Item {
     NowPlayingTheme { id: np }
 
     function openArtist() {
-        if (core.artistId === "")
+        if (!core.artistClickable)
             return
+
+        // id 可能为空（本地歌曲 / 网易云翻唱的 "0"）：传空 id + 名称，由目标页按名称搜索兜底。
         Nav.push("remoteArtist", {
                      "id": core.artistId,
                      "name": core.songArtist,
@@ -53,14 +64,16 @@ Item {
     }
 
     function openAlbum() {
-        if (core.albumId === "")
+        if (!core.albumClickable)
             return
+
         Nav.push("albumDetail", {
                      "source": core.songSource,
                      "id": core.albumId,
                      "name": core.songAlbum,
                      "coverUrl": core.artworkUrl,
                      "creator": core.songArtist,
+                     "artistId": core.artistId,
                      "trackCount": 0
                  })
     }
@@ -141,7 +154,7 @@ Item {
                 alignment: core.alignment
                 icon: "person"
                 text: core.songArtist
-                clickable: core.artistId !== ""
+                clickable: core.artistClickable
                 clickTooltip: "查看歌手详情"
                 fontPixelSize: 15
                 onClicked: core.openArtist()
@@ -153,7 +166,7 @@ Item {
                 alignment: core.alignment
                 icon: "album"
                 text: core.songAlbum
-                clickable: core.albumId !== ""
+                clickable: core.albumClickable
                 clickTooltip: "查看专辑详情"
                 textColor: Theme.withAlpha(np.foreground, 0.62)
                 hoverColor: np.foreground
@@ -228,7 +241,7 @@ Item {
                     alignment: core.alignment
                     icon: "person"
                     text: core.songArtist
-                    clickable: core.artistId !== ""
+                    clickable: core.artistClickable
                     clickTooltip: "查看歌手详情"
                     fontPixelSize: 14
                     iconSize: 16
@@ -241,7 +254,7 @@ Item {
                     alignment: core.alignment
                     icon: "album"
                     text: core.songAlbum
-                    clickable: core.albumId !== ""
+                    clickable: core.albumClickable
                     clickTooltip: "查看专辑详情"
                     textColor: Theme.withAlpha(np.foreground, 0.62)
                     hoverColor: np.foreground

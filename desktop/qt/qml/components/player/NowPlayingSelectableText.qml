@@ -20,6 +20,12 @@ Item {
     property int maximumLines: 0
     /** 可跳转入口（歌手 / 专辑）悬停时的下划线提示。 */
     property bool underlined: false
+    /** 可跳转文字悬停时用手型光标（TextEdit 默认是 I 型光标）。 */
+    property bool handCursor: false
+    /** 允许「未拖动的单击」发出 tapped（用于在可选中文字上叠加跳转）。 */
+    property bool tapEnabled: false
+
+    signal tapped()
     /** 水平对齐（跟随设置里的信息对齐方式）。 */
     property int horizontalAlignment: Text.AlignLeft
 
@@ -78,6 +84,21 @@ Item {
         topPadding: 0
         leftPadding: 0
         rightPadding: 0
+
+        // TextEdit 会自己把鼠标光标设成 I 型；handler 光标优先级更高，悬停可跳转文字时显示手型。
+        HoverHandler {
+            enabled: root.handCursor
+            cursorShape: Qt.PointingHandCursor
+        }
+
+        // handler 必须挂在 TextEdit 自己身上：子项会先吃掉 press，挂在父 Item 上的 handler 收不到。
+        // DragThreshold：超过拖动阈值就交给 TextEdit 做拖选，不触发单击跳转。
+        TapHandler {
+            enabled: root.tapEnabled
+            acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.DragThreshold
+            onSingleTapped: root.tapped()
+        }
     }
 
     TapHandler {

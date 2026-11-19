@@ -4,8 +4,8 @@ import ".."
 
 // 播放页信息行：小图标 + 单行文字。
 //
-// 文字是可选中的（右键菜单可复制歌手 / 专辑）；跳转详情改由左侧小图标触发，
-// 否则鼠标按下会被可选中文字吃掉，无法同时支持「拖选复制」和「单击跳转」。
+// 文字是可选中的（右键菜单可复制歌手 / 专辑），单击文字或左侧小图标都能跳转详情：
+// 文字上叠 TapHandler(gesturePolicy=DragThreshold)，拖动超过阈值时仍交给可选中文字做拖选。
 // alignment 跟随播放页设置：LEFT 时图标贴左、文字填满剩余宽度；
 // CENTER / RIGHT 时「图标 + 文字」作为一个整体居中 / 靠右，文字按内容宽度排版。
 Item {
@@ -91,10 +91,17 @@ Item {
         fontPixelSize: row.fontPixelSize
         wrap: false
         underlined: row.clickable && row.hovered
+        handCursor: row.clickable
+        tapEnabled: row.clickable
         horizontalAlignment: row.alignmentMode === 1 ? Text.AlignHCenter
                                                      : (row.alignmentMode === 2 ? Text.AlignRight
                                                                                 : Text.AlignLeft)
         onActivity: row.activity()
+        // 未拖动的单击 = 跳转；拖动仍交给可选中文字做拖选。
+        onTapped: {
+            row.activity()
+            row.clicked()
+        }
     }
 
     HoverHandler {
