@@ -135,6 +135,8 @@ int main(int argc, char *argv[])
                                   QStringLiteral("截图前的等待毫秒数"),
                                   QStringLiteral("ms"),
                                   QStringLiteral("1200"));
+    QCommandLineOption hideMainOption(QStringLiteral("hide-main"),
+                                      QStringLiteral("启动后隐藏主窗口（验证托盘面板可独立弹出）"));
     parser.addOption(qmlDirOption);
     parser.addOption(selftestOption);
     parser.addOption(screenshotOption);
@@ -143,6 +145,7 @@ int main(int argc, char *argv[])
     parser.addOption(panelOption);
     parser.addOption(sizeOption);
     parser.addOption(waitOption);
+    parser.addOption(hideMainOption);
     parser.process(app);
 
     SingleInstance instance;
@@ -214,13 +217,21 @@ int main(int argc, char *argv[])
         if (parser.isSet(pageOption))
             QMetaObject::invokeMethod(rootObject, "openPageByName",
                                       Q_ARG(QVariant, parser.value(pageOption)));
-        if (parser.isSet(panelOption))
+        // --hide-main 时面板由下面的分支统一弹出，避免这里重复调用导致「开了又关」
+        if (parser.isSet(panelOption) && !parser.isSet(hideMainOption))
             QMetaObject::invokeMethod(rootObject, "openPanelByName",
                                       Q_ARG(QVariant, parser.value(panelOption)));
         if (parser.isSet(sizeOption)) {
             const QStringList parts = parser.value(sizeOption).split(QLatin1Char('x'));
             if (parts.size() == 2)
                 window->resize(parts.at(0).toInt(), parts.at(1).toInt());
+        }
+        // 验证用：先隐藏主窗口，再从「托盘已在后台」的状态弹面板。
+        if (parser.isSet(hideMainOption)) {
+            QMetaObject::invokeMethod(rootObject, "hideMainWindow");
+            if (parser.isSet(panelOption))
+                QMetaObject::invokeMethod(rootObject, "openPanelByName",
+                                          Q_ARG(QVariant, parser.value(panelOption)));
         }
     }
 

@@ -10,8 +10,28 @@ ApplicationWindow {
     height: 820
     minimumWidth: 720
     minimumHeight: 520
-    visible: true
+    // 首帧先不显示：等后端下发真实主题色板后再 show，否则用户会先看到一套
+    // 内置的紫色基线配色、随后整窗跳到真实主题色。
+    // bootstrap 失败或后端迟迟连不上时由 revealFallback 兜底显示，避免黑屏。
+    visible: themeReady
     color: Theme.background
+
+    /** 主题是否已就绪（拿到后端 theme 即可显示）。 */
+    property bool themeReady: false
+
+    /** 兜底：后端 3 秒内没连上也要把界面显示出来。 */
+    property Timer revealFallback: Timer {
+        interval: 3000
+        repeat: false
+        running: !root.themeReady
+        onTriggered: root.revealWindow()
+    }
+
+    function revealWindow() {
+        if (root.themeReady)
+            return
+        root.themeReady = true
+    }
     title: Player.hasSong
            ? (Player.playing ? "▶ " : "⏸ ") + Player.title
              + (Player.artist !== "" ? " - " + Player.artist : "") + " · NeriPlayer"
@@ -27,6 +47,14 @@ ApplicationWindow {
         root.show()
         root.raise()
         root.requestActivate()
+    }
+
+    /** 最小化到托盘（与关闭按钮的 closeToTray 行为一致）。 */
+    function hideMainWindow() {
+        // 先断开子窗口的 transient 关系，否则主窗口隐藏会连带隐藏托盘面板；
+        // 悬浮歌词同理——它需要在主窗口收进托盘后继续显示。
+        WindowDrag.detachChildWindows(root)
+        root.hide()
     }
 
     /** 退出应用（托盘菜单、快捷键）。 */
@@ -64,7 +92,7 @@ ApplicationWindow {
             return
         if (root.trayAvailable && Settings.get("closeToTray", true)) {
             close.accepted = false
-            root.hide()
+            root.hideMainWindow()
             Toast.show("已最小化到托盘，音乐继续播放")
             return
         }
@@ -84,10 +112,13 @@ ApplicationWindow {
     }
 
     function openPanelByName(name) {
-        if (name === "tray")
-            trayPanel.showPanel()
-        else
+        if (name === "tray") {
+            root.ensureAuxWindows()
+            if (root.trayPanel)
+                root.trayPanel.showPanel(true)
+        } else {
             Nav.openPanel(name)
+        }
     }
 
     function bootstrap() {
@@ -109,8 +140,12 @@ ApplicationWindow {
                 Player.queue = snapshot.queue
             if (snapshot.lyrics)
                 Player.lyrics = snapshot.lyrics
+            // 主题已生效，这时才把主窗口显示出来
+            root.themeReady = true
         }).catch(function(error) {
             console.warn("[app] bootstrap failed:", error.message)
+            // 后端异常时也要显示界面，否则用户看到的是「程序没起来」
+            root.revealWindow()
             Toast.show("无法连接播放后端：" + (error.message || "未知错误"), "error")
         })
     }
@@ -156,6 +191,12 @@ ApplicationWindow {
 
     /** 后端全局快捷键回调（导航/面板类动作在 Qt 侧执行）。 */
     function handleShortcut(actionId) {
+        // 全局快捷键可能在主窗口已收进托盘时触发：导航类动作要先显示窗口，
+        // 否则只是切了页面、用户看不到。
+        const navActions = ["open_now_playing", "toggle_downloads", "nav_back",
+                            "nav_home", "nav_explore", "nav_library", "nav_settings"]
+        if (navActions.indexOf(actionId) >= 0)
+            root.showMainWindow()
         switch (actionId) {
         case "open_now_playing":
             Nav.push("nowplaying")
@@ -170,7 +211,9 @@ ApplicationWindow {
             Settings.set("floatingLyricsLocked", !(Settings.get("floatingLyricsLocked", false) === true))
             break
         case "toggle_tray_panel":
-            trayPanel.showPanel()
+            root.ensureAuxWindows()
+            if (root.trayPanel)
+                root.trayPanel.showPanel(true)
             break
         case "nav_back":
             Nav.back()
@@ -207,7 +250,9 @@ ApplicationWindow {
             Nav.openDownloadsPanel()
             break
         case "openPanel":
-            trayPanel.showPanel()
+            root.ensureAuxWindows()
+            if (root.trayPanel)
+                root.trayPanel.showPanel(true)
             break
         case "quit":
             root.quitApp()
@@ -216,6 +261,7 @@ ApplicationWindow {
             Toast.show(data.enabled === true ? "悬浮歌词已开启" : "悬浮歌词已关闭")
             break
         case "toggleFloatingLyricsLock":
+            Toast.show(data.locked === true ? "歌词位置已固定" : "歌词位置已解锁")
             break
         default:
             console.warn("[tray] unknown command:", data.command)
@@ -280,6 +326,7 @@ ApplicationWindow {
     Component.onCompleted: {
         shortcuts.activate()
         centerWindow()
+        ensureAuxWindows()
         if (Qt.application.arguments.indexOf("--selftest") >= 0)
             runSelfTest()
     }

@@ -174,7 +174,17 @@ QtObject {
     // onSurface 等角色用 xxxColor 命名（见上），这里保留与 Kotlin 同名的访问入口，避免页面里到处写 c()
     function role(name) { return c(name) }
 
+    /**
+     * 给颜色加不透明度。
+     *
+     * 传字符串（如 "#FFFFFF"）时不能直接读 .r/.g/.b —— 字符串没有这些属性，会得到
+     * undefined 并被 Qt.rgba 当成 0，结果是纯黑。这里统一先归一化成 color 对象。
+     */
     function withAlpha(color, alpha) {
+        if (typeof color === "string") {
+            const parsed = Qt.color(color)
+            return Qt.rgba(parsed.r, parsed.g, parsed.b, alpha)
+        }
         return Qt.rgba(color.r, color.g, color.b, alpha)
     }
 
