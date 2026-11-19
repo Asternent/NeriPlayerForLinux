@@ -317,14 +317,19 @@ Item {
             }
         }
 
+        // 副标题收起时如果只是把 opacity 设 0，它会继续占着高度，标题就被挤到偏上位置。
+        // 这里用「标题 + 副标题」整体做垂直居中，副标题高度随收起动画一起归零，标题因此始终居中。
         Column {
             anchors.left: parent.left
             anchors.leftMargin: page.sideMargin
             anchors.right: actions.left
             anchors.rightMargin: Theme.spacingSm
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: page.compactHeader ? 12 : Theme.spacingLg
-            spacing: 2
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: page.compactHeader ? 0 : 2
+
+            Behavior on spacing {
+                NumberAnimation { duration: Theme.motionShort }
+            }
 
             Text {
                 width: parent.width
@@ -336,16 +341,32 @@ Item {
                 font.weight: Font.Bold
             }
 
-            Text {
+            // 收起时高度也归零，不占位
+            Item {
                 width: parent.width
-                text: "发现今天的好音乐"
-                elide: Text.ElideRight
-                color: Theme.onSurfaceVariantColor
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.textStyle("labelSmall").size
-                opacity: page.compactHeader ? 0 : 1
-                Behavior on opacity {
-                    NumberAnimation { duration: Theme.motionShort }
+                height: page.compactHeader ? 0 : subtitleText.implicitHeight
+                clip: true
+
+                Behavior on height {
+                    NumberAnimation {
+                        duration: Theme.motionShort
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Text {
+                    id: subtitleText
+                    width: parent.width
+                    text: "发现今天的好音乐"
+                    elide: Text.ElideRight
+                    color: Theme.onSurfaceVariantColor
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.textStyle("labelSmall").size
+                    opacity: page.compactHeader ? 0 : 1
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: Theme.motionShort }
+                    }
                 }
             }
         }
@@ -369,27 +390,11 @@ Item {
             }
 
             IconButton {
-                icon: "search"
-                iconSize: 22
-                size: 40
-                tooltip: "搜索"
-                onClicked: Nav.openTab("explore")
-            }
-
-            IconButton {
                 icon: "download"
                 iconSize: 22
                 size: 40
                 tooltip: "下载管理"
                 onClicked: Nav.openDownloadsPanel()
-            }
-
-            IconButton {
-                icon: "settings"
-                iconSize: 22
-                size: 40
-                tooltip: "设置"
-                onClicked: Nav.openTab("settings")
             }
         }
     }
