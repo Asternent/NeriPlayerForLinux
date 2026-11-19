@@ -9,8 +9,8 @@ Item {
     id: page
 
     readonly property var arg: Nav.currentArg
-    readonly property string kind: arg && arg.kind ? String(arg.kind) : "playlist"
-    readonly property string argSource: arg && arg.source ? String(arg.source) : "NETEASE"
+    readonly property string kind: arg && arg.kind ? String(arg.kind).toLowerCase() : "playlist"
+    readonly property string argSource: arg && arg.source ? String(arg.source).toUpperCase() : "NETEASE"
     readonly property string argId: arg && arg.id !== undefined && arg.id !== null ? String(arg.id) : ""
     readonly property string headerTitle: detail && detail.title ? detail.title : (arg && arg.name ? arg.name : "在线歌单")
     readonly property string headerCover: detail && detail.coverUrl ? detail.coverUrl
@@ -28,6 +28,9 @@ Item {
     property var songs: []
     property bool loading: true
     property string errorMessage: ""
+    // 音源后端能力缺失时的降级提示（页面仍展示参数带来的头部信息）。
+    property bool degraded: false
+    property string degradeText: ""
     property int _seq: 0
 
     function load() {
@@ -38,7 +41,39 @@ Item {
         }
         loading = true
         errorMessage = ""
+        degraded = false
+        degradeText = ""
         const seq = ++page._seq
+
+        // YouTube 歌单走 ytmusic.*（online.collectionDetail 不支持 YOUTUBE）。
+        if (page.argSource === "YOUTUBE") {
+            Api.call("ytmusic.playlist", { "id": page.argId }).then(function(result) {
+                if (seq !== page._seq)
+                    return
+                const data = result || ({})
+                page.detail = {
+                    "title": data.title || data.name || "",
+                    "coverUrl": data.coverUrl || data.thumbnail || "",
+                    "description": data.description || "",
+                    "creator": data.creator || data.artist || ""
+                }
+                page.songs = data.songs || []
+                page.loading = false
+            }).catch(function(error) {
+                if (seq !== page._seq)
+                    return
+                if (error && error.code === "unknown_method") {
+                    page.degraded = true
+                    page.degradeText = "当前后端暂不支持 YouTube 歌单详情（ytmusic.playlist）"
+                    page.loading = false
+                    return
+                }
+                page.errorMessage = error && error.message ? error.message : "加载失败"
+                page.loading = false
+            })
+            return
+        }
+
         Api.call("online.collectionDetail", {
                      source: page.argSource,
                      id: page.argId,
@@ -57,6 +92,19 @@ Item {
         })
     }
 
+    function openAlbumPage() {
+        if (page.argId === "")
+            return
+        Nav.push("albumDetail", {
+                     "source": page.argSource,
+                     "id": page.argId,
+                     "name": page.headerTitle,
+                     "coverUrl": page.headerCover,
+                     "creator": page.detail && page.detail.creator ? String(page.detail.creator) : "",
+                     "trackCount": page.songs.length
+                 })
+    }
+
     PageActions {
         id: actions
     }
@@ -69,12 +117,6 @@ Item {
         if (index < 0 || index >= page.songs.length)
             return
         actions.playSongs(page.songs, index)
-    }
-
-    function enqueueSong(song) {
-        if (!song)
-            return
-        actions.enqueueNext([song])
     }
 
     Component.onCompleted: {
@@ -187,6 +229,97 @@ Item {
                         onCollectClicked: collectDialog.openFor(page.songs)
                     }
 
+                    // 降级提示（YouTube 后端命令缺失等）。
+                    Rectangle {
+                        width: parent.width - Theme.spacingLg * 2
+                        x: Theme.spacingLg
+                        visible: page.degraded
+                        height: visible ? degradeRow.implicitHeight + Theme.spacingMd * 2 : 0
+                        radius: Theme.radiusMd
+                        color: Theme.surfaceContainerHigh
+
+                        Row {
+                            id: degradeRow
+
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: Theme.spacingMd
+                            anchors.rightMargin: Theme.spacingMd
+                            spacing: Theme.spacingSm
+
+                            NeriIcon {
+                                width: 18
+                                height: 18
+                                name: "info"
+                                iconSize: 18
+                                color: Theme.onSurfaceVariantColor
+                            }
+
+                            Text {
+                                width: parent.width - 18 - Theme.spacingSm
+                                text: page.degradeText
+                                wrapMode: Text.Wrap
+                                color: Theme.onSurfaceVariantColor
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.textStyle("bodySmall").size
+                            }
+                        }
+                    }
+
+                    // 在线专辑页 → 专辑详情页入口（专辑页有封面头部/简介/总时长）。
+                    Item {
+                        width: parent.width
+                        height: page.kind === "album" ? 44 : 0
+                        visible: page.kind === "album"
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.spacingLg
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 34
+                            width: albumEntryRow.implicitWidth + 28
+                            radius: height / 2
+                            color: albumEntryMouse.containsMouse ? Theme.withAlpha(Theme.primary, 0.1) : "transparent"
+                            border.width: 1
+                            border.color: Theme.outlineVariant
+
+                            Row {
+                                id: albumEntryRow
+
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                NeriIcon {
+                                    width: 18
+                                    height: 18
+                                    name: "album"
+                                    iconSize: 18
+                                    color: Theme.primary
+                                }
+
+                                Text {
+                                    height: 20
+                                    text: "打开专辑页"
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: Theme.primary
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.textStyle("labelLarge").size
+                                    font.weight: Font.Medium
+                                }
+                            }
+
+                            MouseArea {
+                                id: albumEntryMouse
+
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: page.openAlbumPage()
+                            }
+                        }
+                    }
+
                     SectionHeader {
                         width: parent.width
                         title: "歌曲（" + page.songs.length + "）"
@@ -208,11 +341,15 @@ Item {
                 }
             }
             onSongActivated: function(index) { page.playAt(index) }
-            onSongMoreClicked: function(index, song) { page.enqueueSong(song) }
+            onSongMoreClicked: function(index, song) { songMenu.openFor(song, {}) }
         }
     }
 
     AddToPlaylistDialog {
         id: collectDialog
+    }
+
+    SongActionsMenu {
+        id: songMenu
     }
 }

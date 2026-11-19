@@ -34,8 +34,52 @@ Menu {
     signal moveRequested(var song, int delta)
     signal favoriteToggled(var song, bool favorite)
 
+    readonly property string songSource: root.song && root.song.source
+                                         ? String(root.song.source).toUpperCase() : "LOCAL"
+    readonly property string songAlbum: root.song && root.song.album ? String(root.song.album) : ""
+    readonly property string songArtist: root.song && root.song.artist ? String(root.song.artist) : ""
+    // 本地库按名字过滤；网易云/B 站可用名字搜索兜底；YouTube 必须带 id。
+    readonly property bool albumLinkAvailable: root.songAlbum !== ""
+                                               && (root.songSource !== "YOUTUBE" || !!(root.song && root.song.albumId))
+    readonly property bool artistLinkAvailable: root.songArtist !== ""
+                                                && (root.songSource !== "YOUTUBE" || !!(root.song && root.song.artistId))
+
     width: 240
     padding: Theme.spacingXs
+
+    /** 打开专辑详情页；在线音源优先用 albumId，本地库按专辑名过滤。 */
+    function openAlbum() {
+        const song = root.song
+        if (!song || root.songAlbum === "")
+            return
+        Nav.push("albumDetail", {
+                     "source": root.songSource,
+                     "id": song.albumId ? String(song.albumId) : root.songAlbum,
+                     "name": root.songAlbum,
+                     "coverUrl": song.artworkUrl ? String(song.artworkUrl) : "",
+                     "creator": root.songArtist,
+                     "trackCount": 0
+                 })
+    }
+
+    /** 多位歌手的 "A / B" 串取第一位的名字（在线音源歌手页只对应一位歌手）。 */
+    function primaryArtist(text) {
+        const slash = String(text || "").indexOf("/")
+        return slash > 0 ? String(text).substring(0, slash).trim() : String(text || "")
+    }
+
+    /** 打开统一歌手页；在线音源优先用 artistId，本地库按歌手名过滤。 */
+    function openArtist() {
+        const song = root.song
+        if (!song || root.songArtist === "")
+            return
+        const name = root.songSource === "LOCAL" ? root.songArtist : primaryArtist(root.songArtist)
+        Nav.push("remoteArtist", {
+                     "source": root.songSource,
+                     "id": song.artistId ? String(song.artistId) : name,
+                     "name": name
+                 })
+    }
 
     /** 把当前歌曲加入下载队列（后端 download.enqueue，进度见下载面板）。 */
     function enqueueDownload() {
@@ -162,6 +206,22 @@ Menu {
     ActionItem {
         text: "下载"
         onTriggered: root.enqueueDownload()
+    }
+
+    Divider {
+        visible: root.albumLinkAvailable || root.artistLinkAvailable
+    }
+
+    ActionItem {
+        visible: root.albumLinkAvailable
+        text: "查看专辑"
+        onTriggered: root.openAlbum()
+    }
+
+    ActionItem {
+        visible: root.artistLinkAvailable
+        text: "查看歌手"
+        onTriggered: root.openArtist()
     }
 
     Divider {

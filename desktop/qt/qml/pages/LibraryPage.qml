@@ -104,6 +104,19 @@ Item {
         Nav.push("localPlaylist", playlistId)
     }
 
+    // 本地专辑卡片：打开统一专辑详情页（按专辑名 + 歌手过滤本地媒体库）。
+    function openLocalAlbum(group) {
+        if (!group)
+            return
+        Nav.push("albumDetail", {
+                     "source": "LOCAL",
+                     "id": String(group.name || ""),
+                     "name": String(group.name || ""),
+                     "creator": String(group.artist || ""),
+                     "trackCount": group.songs ? group.songs.length : 0
+                 })
+    }
+
     // ---- 数据加载 ----
     function reloadLibrary() {
         page.loading = true
@@ -598,7 +611,7 @@ Item {
                                       + (group && group.songs ? group.songs.length : 0) + " 首"
                             coverPath: group && group.songs && group.songs.length > 0 && group.songs[0].artworkPath
                                        ? group.songs[0].artworkPath : ""
-                            onClicked: page.playSongs(group.songs, 0)
+                            onClicked: page.openLocalAlbum(group)
                         }
                     }
                 }
