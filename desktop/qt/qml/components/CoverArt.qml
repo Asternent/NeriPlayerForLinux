@@ -24,6 +24,12 @@ Item {
     readonly property url source: effectivePath !== "" ? ("file://" + effectivePath) : ""
     readonly property bool hasImage: image.status === Image.Ready
 
+    /** 解码尺寸：按当前显示尺寸 × 设备像素比；尺寸还没确定时为 0（表示按原图）。 */
+    readonly property int decodeWidth: width > 0
+        ? Math.max(1, Math.round(width * Screen.devicePixelRatio)) : 0
+    readonly property int decodeHeight: height > 0
+        ? Math.max(1, Math.round(height * Screen.devicePixelRatio)) : 0
+
     function resolveRemote() {
         if ((path !== "" && path !== undefined) || url === "" || url === undefined) {
             resolvedPath = ""
@@ -71,6 +77,13 @@ Item {
             id: image
             anchors.fill: parent
             source: cover.source
+            // 按实际显示尺寸解码，而不是原图分辨率。
+            //
+            // 封面原图常常是 1000+ 的方图，而卡片里只显示 160~190 px；不限制的话
+            // Qt 会按原尺寸解码成纹理常驻内存，首页几十张卡片叠起来就是几百 MB。
+            // 乘以屏幕缩放因子保证高 DPI 下依然清晰。
+            sourceSize.width: cover.decodeWidth
+            sourceSize.height: cover.decodeHeight
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: true

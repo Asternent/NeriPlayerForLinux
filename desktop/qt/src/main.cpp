@@ -214,6 +214,14 @@ int main(int argc, char *argv[])
 
     QQuickWindow *window = qobject_cast<QQuickWindow *>(rootObject);
     if (window) {
+        // 窗口隐藏时释放 GPU/场景图缓存。
+        //
+        // 主窗口收进托盘后可能长时间不显示，Qt 默认仍保留场景图的纹理与图形资源。
+        // releaseResources() 会在隐藏后把这块交还给驱动，重新显示时再按需重建。
+        QObject::connect(window, &QWindow::visibleChanged, window, [window]() {
+            if (!window->isVisible())
+                window->releaseResources();
+        });
         if (parser.isSet(pageOption))
             QMetaObject::invokeMethod(rootObject, "openPageByName",
                                       Q_ARG(QVariant, parser.value(pageOption)));

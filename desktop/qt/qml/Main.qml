@@ -47,6 +47,9 @@ ApplicationWindow {
         root.show()
         root.raise()
         root.requestActivate()
+        // 之前收进托盘时释放过页面缓存，这里重建当前页
+        if (root.shellItem)
+            root.shellItem.rebuildCurrentPage()
     }
 
     /** 最小化到托盘（与关闭按钮的 closeToTray 行为一致）。 */
@@ -55,6 +58,10 @@ ApplicationWindow {
         // 悬浮歌词同理——它需要在主窗口收进托盘后继续显示。
         WindowDrag.detachChildWindows(root)
         root.hide()
+        // 主窗口收进托盘后可能很久不再打开：把页面缓存（图片纹理/列表模型/delegate）
+        // 整体释放，重新显示时按需重建，避免长期占着内存。
+        if (root.shellItem)
+            root.shellItem.releasePages()
     }
 
     /** 退出应用（托盘菜单、快捷键）。 */
@@ -272,6 +279,9 @@ ApplicationWindow {
         id: shell
         anchors.fill: parent
     }
+
+    /** 供 C++/脚本调用的 AppShell 引用（页面缓存释放等）。 */
+    readonly property Item shellItem: shell
 
     AppShortcuts {
         id: shortcuts

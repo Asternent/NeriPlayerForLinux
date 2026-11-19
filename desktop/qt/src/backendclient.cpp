@@ -336,10 +336,23 @@ bool BackendClient::tryStartBackend()
     if (java.isEmpty())
         return false;
 
+    // JVM 内存收敛：
+    //  - 初始堆给小值，让 JVM 按实际压力增长（默认按物理内存的 1/64 起步，空闲时也会
+    //    预留一大块，这是后端 RSS 偏高的主因）；
+    //  - 元空间/代码缓存设上限，避免类加载后无限增长；
+    //  - G1 的并发线程按 CPU 核数默认开很多，限制到 2 可显著降低线程栈占用。
     QStringList args;
     args << QStringLiteral("-Dfile.encoding=UTF-8")
-         << QStringLiteral("-Xmx512m")
+         << QStringLiteral("-Xms32m")
+         << QStringLiteral("-Xmx256m")
+         << QStringLiteral("-XX:MaxMetaspaceSize=128m")
+         << QStringLiteral("-XX:ReservedCodeCacheSize=48m")
          << QStringLiteral("-XX:+UseG1GC")
+         << QStringLiteral("-XX:ConcGCThreads=1")
+         << QStringLiteral("-XX:ParallelGCThreads=2")
+         << QStringLiteral("-XX:+UseStringDeduplication")
+         << QStringLiteral("-XX:MaxHeapFreeRatio=40")
+         << QStringLiteral("-XX:MinHeapFreeRatio=10")
          << QStringLiteral("-jar") << jar;
 
     qint64 pid = -1;
