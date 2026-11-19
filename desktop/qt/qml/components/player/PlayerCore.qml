@@ -2,11 +2,14 @@ import QtQuick
 import ".."
 
 // 播放页左侧信息区（宽屏竖排 / 窄屏横排）：封面 + 标题 + 歌手 + 专辑。
-// 歌手/专辑行在 Song 带有 artistId/albumId 时可点击，跳转到在线歌手/专辑详情。
+// 标题/歌手/专辑文字用可选中组件（支持 Ctrl+C 与右键复制菜单）；
+// 歌手/专辑的跳转入口在左侧小图标上，避免和拖选文字冲突。
 Item {
     id: core
 
     property real coverSize: 280
+    /** 宽屏时左右留白，让填满左栏的文字不贴边。 */
+    property real contentPadding: 0
     /** 窄屏横排：封面在左，文字在右。 */
     property bool compact: false
 
@@ -64,7 +67,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
         visible: !core.compact
-        width: Math.min(core.width, Math.max(core.coverSize, 360))
+        // 填满左栏（不再限制 360），只留两侧留白
+        width: Math.max(0, core.width - core.contentPadding * 2)
         height: regularColumn.height
 
         Column {
@@ -91,33 +95,31 @@ Item {
                 height: 26
             }
 
-            Text {
-                id: regularTitle
-
+            NowPlayingSelectableText {
                 width: parent.width
                 text: core.songTitle
                 color: np.foreground
-                font.family: Theme.fontFamily
-                font.pixelSize: core.titleSize
-                font.weight: Font.DemiBold
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                textFormat: Text.PlainText
+                fontPixelSize: core.titleSize
+                fontWeight: Font.DemiBold
+                wrap: true
+                maximumLines: 2
+                onActivity: core.activity()
             }
 
-            Text {
+            Item {
+                width: 1
+                height: 4
+            }
+
+            NowPlayingSelectableText {
                 width: parent.width
                 visible: core.songSubtitle !== ""
                 text: core.songSubtitle
                 color: np.foregroundDim
-                font.family: Theme.fontFamily
-                font.pixelSize: Math.round(core.titleSize * 0.55)
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                textFormat: Text.PlainText
-                topPadding: 4
+                fontPixelSize: Math.round(core.titleSize * 0.55)
+                wrap: true
+                maximumLines: 2
+                onActivity: core.activity()
             }
 
             Item {
@@ -130,6 +132,7 @@ Item {
                 icon: "person"
                 text: core.songArtist
                 clickable: core.artistId !== ""
+                clickTooltip: "查看歌手详情"
                 fontPixelSize: 15
                 onClicked: core.openArtist()
                 onActivity: core.activity()
@@ -140,6 +143,7 @@ Item {
                 icon: "album"
                 text: core.songAlbum
                 clickable: core.albumId !== ""
+                clickTooltip: "查看专辑详情"
                 textColor: Theme.withAlpha(np.foreground, 0.62)
                 hoverColor: np.foreground
                 fontPixelSize: 14
@@ -180,28 +184,25 @@ Item {
                 width: parent.width
                 spacing: 3
 
-                Text {
+                NowPlayingSelectableText {
                     width: parent.width
                     text: core.songTitle
                     color: np.foreground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: core.titleSize
-                    font.weight: Font.DemiBold
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
+                    fontPixelSize: core.titleSize
+                    fontWeight: Font.DemiBold
+                    wrap: true
+                    maximumLines: 2
+                    onActivity: core.activity()
                 }
 
-                Text {
+                NowPlayingSelectableText {
                     width: parent.width
                     visible: core.songSubtitle !== ""
                     text: core.songSubtitle
                     color: np.foregroundDim
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
+                    fontPixelSize: 12
+                    wrap: false
+                    onActivity: core.activity()
                 }
 
                 Item {
@@ -214,6 +215,7 @@ Item {
                     icon: "person"
                     text: core.songArtist
                     clickable: core.artistId !== ""
+                    clickTooltip: "查看歌手详情"
                     fontPixelSize: 14
                     iconSize: 16
                     onClicked: core.openArtist()
@@ -225,6 +227,7 @@ Item {
                     icon: "album"
                     text: core.songAlbum
                     clickable: core.albumId !== ""
+                    clickTooltip: "查看专辑详情"
                     textColor: Theme.withAlpha(np.foreground, 0.62)
                     hoverColor: np.foreground
                     fontPixelSize: 12

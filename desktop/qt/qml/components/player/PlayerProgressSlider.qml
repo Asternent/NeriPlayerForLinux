@@ -7,10 +7,12 @@ Item {
 
     property bool dragging: false
     property real dragValue: 0
+    /** 控制条整体 hover 时也加粗轨道（指针不一定正好落在进度条上）。 */
+    property bool forceExpanded: false
 
     readonly property bool seekEnabled: Player.durationMs > 0
     readonly property bool hovered: trackMouse.containsMouse
-    readonly property bool expanded: hovered || dragging
+    readonly property bool expanded: hovered || dragging || forceExpanded
     readonly property real progress: Player.durationMs > 0
                                      ? Math.max(0, Math.min(1, Player.positionMs / Player.durationMs))
                                      : 0

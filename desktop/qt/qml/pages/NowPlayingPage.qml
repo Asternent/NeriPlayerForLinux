@@ -25,8 +25,10 @@ Item {
     property bool controlsHovered: false
 
     // ---- 尺寸 ----
-    readonly property real wideLeftWidth: Math.max(320, Math.min(width * 0.45, 560))
-    readonly property real wideCoverSize: Math.max(160, Math.min(280,
+    // 信息区 : 歌词区 ≈ 2 : 3：左栏取窗口宽度的 41%，窄窗口下至少 380。
+    // 之前 PlayerCore 内部把文字宽度限制在 360，导致视觉上接近 1 : 4，这里一并去掉。
+    readonly property real wideLeftWidth: Math.max(380, Math.round(width * 0.41))
+    readonly property real wideCoverSize: Math.max(160, Math.min(300,
                                                                Math.min(content.height * 0.52,
                                                                         wideLeftWidth * 0.72)))
     readonly property real narrowCoverSize: Math.max(88, Math.min(132,
@@ -183,6 +185,7 @@ Item {
                 anchors.bottom: parent.bottom
                 width: page.wideLeftWidth
                 coverSize: page.wideCoverSize
+                contentPadding: Theme.spacingXl
                 onActivity: page.pokeControls()
             }
 
@@ -213,7 +216,8 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.leftMargin: Theme.spacingLg
-                anchors.rightMargin: Theme.spacingLg
+                // 右侧给右上角竖排的评论/一起听按钮留出位置，长标题不会压到按钮下面
+                anchors.rightMargin: Theme.spacingLg + 44
                 anchors.top: parent.top
                 height: contentHeight
                 compact: true
@@ -293,6 +297,89 @@ Item {
         }
     }
 
+    // ---------------------------------------------------------------- 右上角竖排按钮
+
+    // 评论 / 一起听：从右上角的沉浸按钮往下竖排，鼠标移到这一列时淡入。
+    // 不放进 topBar 里，是因为 topBar 只有 64 高，子项溢出后点击热区会落在它外面。
+    Item {
+        id: topActions
+
+        anchors.top: parent.top
+        anchors.topMargin: 58
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacingMd
+        width: 44
+        height: actionsColumn.height
+        z: 3
+        visible: page.controlsVisible && !page.showFullLyrics
+
+        readonly property bool revealed: actionsHover.hovered
+
+        opacity: revealed ? 1 : 0
+
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.motionMedium; easing.type: Easing.OutCubic }
+        }
+
+        HoverHandler {
+            id: actionsHover
+        }
+
+        Connections {
+            target: actionsHover
+            function onHoveredChanged() {
+                // 悬停在这一列时不要让控制条自动隐藏，否则按钮会在鼠标底下淡出
+                if (actionsHover.hovered) {
+                    page.controlsVisible = true
+                    hideTimer.stop()
+                } else {
+                    page.pokeControls()
+                }
+            }
+        }
+
+        Column {
+            id: actionsColumn
+
+            width: parent.width
+            spacing: Theme.spacingXs
+            // 收起（透明）时不接收点击，避免误触看不见的按钮
+            enabled: topActions.revealed
+
+            IconButton {
+                anchors.horizontalCenter: parent.horizontalCenter
+                icon: "comment"
+                iconSize: 20
+                size: 40
+                iconColor: np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "评论"
+                onClicked: {
+                    if (typeof Nav.openCommentsPanel === "function")
+                        Nav.openCommentsPanel()
+                    else
+                        Nav.openPanel("comments")
+                }
+            }
+
+            IconButton {
+                anchors.horizontalCenter: parent.horizontalCenter
+                icon: "group"
+                iconSize: 20
+                size: 40
+                iconColor: np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "一起听"
+                onClicked: {
+                    if (typeof Nav.openListenTogetherPanel === "function")
+                        Nav.openListenTogetherPanel()
+                    else
+                        Nav.openPanel("listenTogether")
+                }
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- 底部控制条
 
     NowPlayingControls {
@@ -304,12 +391,10 @@ Item {
         compact: !page.wide
         visible: !page.showFullLyrics
         controlsVisible: page.controlsVisible
-        secondaryVisible: page.controlsVisible && page.controlsHovered
         onActivity: {
             page.pokeControls()
         }
         onLyricsRequested: page.showFullLyrics = true
-        onImmersiveRequested: page.toggleImmersive()
 
         Connections {
             target: controls

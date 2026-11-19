@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Effects
 import ".."
 
@@ -143,5 +145,149 @@ Item {
             if (coverHover.hovered)
                 root.activity()
         }
+    }
+
+    // ---------------------------------------------------------------- 封面右键菜单
+
+    /** 歌曲的远程封面地址 / 本地封面文件（两者可能只有其一）。 */
+    readonly property string artworkUrl: Player.song && Player.song.artworkUrl
+                                         ? String(Player.song.artworkUrl) : ""
+    readonly property string artworkPath: Player.song && Player.song.artworkPath
+                                          ? String(Player.song.artworkPath) : ""
+    readonly property bool canCopyArtworkLink: artworkUrl !== ""
+    readonly property bool canSaveArtwork: artworkUrl !== "" || artworkPath !== ""
+
+    /** 优先用封面本身的扩展名，双击保存时用户不用手改后缀。 */
+    function coverFileExtension() {
+        const source = artworkPath !== "" ? artworkPath : artworkUrl
+        const matched = String(source).toLowerCase().match(/\.(jpe?g|png|webp|gif|bmp|avif)(?:$|[?#])/)
+        if (!matched)
+            return "jpg"
+        return matched[1] === "jpeg" ? "jpg" : matched[1]
+    }
+
+    function urlToLocalPath(value) {
+        const text = String(value)
+        return decodeURIComponent(text.replace(/^file:\/\//, ""))
+    }
+
+    function copyToClipboard(value) {
+        if (value === "")
+            return
+        clipHelper.text = value
+        clipHelper.selectAll()
+        clipHelper.copy()
+    }
+
+    function saveArtwork(targetPath) {
+        if (!canSaveArtwork || targetPath === "")
+            return
+        // url / path 同时传：后端优先本地文件，没有再按 url 解析下载，前端无需关心缓存状态
+        Api.call("artwork.saveAs", {
+                     "url": artworkUrl,
+                     "path": artworkPath,
+                     "target": targetPath
+                 }).then(function(result) {
+            if (result && result.ok) {
+                Toast.show("封面已保存：" + result.path, "info")
+            } else {
+                Toast.show(result && result.error ? result.error : "封面保存失败", "error")
+            }
+        }).catch(function(error) {
+            Toast.show(error && error.message ? error.message : "封面保存失败", "error")
+        })
+    }
+
+    TextEdit {
+        id: clipHelper
+
+        visible: false
+        width: 1
+        height: 1
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onSingleTapped: function(eventPoint) {
+            root.activity()
+            artworkMenu.popup(root, eventPoint.position.x, eventPoint.position.y)
+        }
+    }
+
+    Menu {
+        id: artworkMenu
+
+        width: 224
+        padding: Theme.spacingXs
+
+        background: Rectangle {
+            radius: Theme.radiusMd
+            color: Theme.surfaceContainerHigh
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.outlineVariant, 0.6)
+        }
+
+        component ContextItem: MenuItem {
+            id: contextItem
+
+            property string iconName: "content_copy"
+
+            implicitHeight: 42
+            padding: Theme.spacingSm
+
+            contentItem: Row {
+                spacing: Theme.spacingSm
+
+                NeriIcon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: contextItem.iconName
+                    iconSize: 18
+                    color: contextItem.enabled ? Theme.onSurfaceVariantColor
+                                               : Theme.withAlpha(Theme.onSurfaceVariantColor, 0.38)
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: contextItem.text
+                    color: contextItem.enabled ? Theme.onSurfaceColor
+                                               : Theme.withAlpha(Theme.onSurfaceColor, 0.38)
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.textStyle("bodyMedium").size
+                }
+            }
+
+            background: Rectangle {
+                radius: Theme.radiusSm
+                color: contextItem.highlighted ? Theme.withAlpha(Theme.onSurfaceColor, 0.08)
+                                               : "transparent"
+            }
+        }
+
+        ContextItem {
+            text: "复制封面链接"
+            iconName: "link"
+            enabled: root.canCopyArtworkLink
+            onTriggered: {
+                root.copyToClipboard(root.artworkUrl)
+                Toast.show("已复制封面链接", "info")
+            }
+        }
+
+        ContextItem {
+            text: "保存封面…"
+            iconName: "save_alt"
+            enabled: root.canSaveArtwork
+            onTriggered: saveDialog.open()
+        }
+    }
+
+    FileDialog {
+        id: saveDialog
+
+        title: "保存封面"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: root.coverFileExtension()
+        nameFilters: ["图片文件 (*.jpg *.jpeg *.png *.webp *.gif)", "所有文件 (*)"]
+        onAccepted: root.saveArtwork(root.urlToLocalPath(selectedFile))
     }
 }

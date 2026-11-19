@@ -2,20 +2,21 @@ import QtQuick
 import QtQuick.Layouts
 import ".."
 
-// 播放页底部控制条（Refined Now Playing 风格）：
-// 贴底细进度条 + 红心/播放暂停居中/上一首下一首/时间常驻，
-// 其余按钮（随机/循环/队列/音效/音量/睡眠/下载/评论/一起听/全屏歌词/沉浸）在 hover 时淡入。
+// 播放页底部控制条（Refined Now Playing 风格）。
+//
+// 收起态：贴底细进度条 + 时间 + 红心 + 上一首/播放/下一首。
+// hover 态：进度条上移到控制条顶部、时间文字移到进度条两端上方；
+//           控制条整体长高（播放按钮上下留白相等），二级按钮在播放行左右展开：
+//           左：随机/队列/音效/音量，右：睡眠/下载/全屏歌词/循环。
+// 评论与一起听已移到页面右上角竖列（见 NowPlayingPage），沉浸按钮在右上角，控制条内不再重复。
 Item {
     id: root
 
     signal activity()
     signal lyricsRequested()
-    signal immersiveRequested()
 
     /** 页面控制：鼠标活动时显示，静止一段时间后淡出。 */
     property bool controlsVisible: true
-    /** hover 控制条时露出二级按钮。 */
-    property bool secondaryVisible: false
     property bool compact: false
 
     readonly property real sideMargin: compact ? Theme.spacingLg : 28
@@ -23,8 +24,28 @@ Item {
     readonly property color favoriteColor: Theme.mix(Theme.error, np.foreground, 0.35)
     /** 鼠标是否停在控制条上（页面据此露出二级按钮）。 */
     readonly property bool hovered: barHover.hovered
+    readonly property bool expanded: hovered && controlsVisible
 
-    implicitHeight: secondaryRow.height + mainRow.height + progress.implicitHeight
+    /** 0 = 收起，1 = hover 展开；控制条高度、进度条位置、时间与二级按钮都由它驱动。 */
+    property real expandAmount: expanded ? 1 : 0
+
+    Behavior on expandAmount {
+        NumberAnimation {
+            duration: Theme.motionMedium
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    // ---- 两态尺寸 ----
+    readonly property real rowHeight: compact ? 58 : 64
+    readonly property real collapsedHeight: rowHeight + 20
+    // 控制条长高到「播放按钮上下留白相等」的高度（见 expanded 布局注释）
+    readonly property real expandedHeight: compact ? 106 : 128
+    readonly property real expandedRowY: compact ? 44 : 54
+    readonly property real expandedProgressY: compact ? 20 : 24
+    readonly property real expandedTimeY: compact ? 6 : 8
+
+    height: collapsedHeight + expandAmount * (expandedHeight - collapsedHeight)
     opacity: controlsVisible ? 1 : 0
     enabled: controlsVisible
 
@@ -53,6 +74,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: parent.height + 40
+        z: -1
         gradient: Gradient {
             GradientStop { position: 0.0; color: Theme.withAlpha(np.scrim, 0.0) }
             GradientStop { position: 0.55; color: Theme.withAlpha(np.scrim, 0.28) }
@@ -60,7 +82,7 @@ Item {
         }
     }
 
-    // ---- 控制条 hover：露出二级按钮 ----
+    // ---- 控制条 hover：展开二级按钮 ----
     HoverHandler {
         id: barHover
     }
@@ -73,160 +95,51 @@ Item {
         }
     }
 
-    // ---------------------------------------------------------------- 二级按钮
+    // ---------------------------------------------------------------- 进度条（收起贴底 / hover 上移到顶部）
 
-    Item {
-        id: secondaryRow
+    PlayerProgressSlider {
+        id: progress
 
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: mainRow.top
-        height: compact ? 38 : 42
-        opacity: root.controlsVisible && root.secondaryVisible ? 1 : 0
+        forceExpanded: root.expandAmount > 0.5
+        // 收起时贴底；hover 时上移到时间文字下方（控制条顶部）
+        y: (root.collapsedHeight - progress.implicitHeight)
+           + root.expandAmount * (root.expandedProgressY - (root.collapsedHeight - progress.implicitHeight))
+    }
+
+    // ---------------------------------------------------------------- hover 时进度两端上方的当前/总时长
+
+    Item {
+        id: progressTimeRow
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        y: root.expandedTimeY
+        height: Math.max(0, root.expandedProgressY - root.expandedTimeY)
+        opacity: root.expandAmount
         visible: opacity > 0.01
 
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.motionMedium; easing.type: Easing.OutCubic }
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: root.sideMargin
+            anchors.top: parent.top
+            text: root.formatTime(Player.positionMs)
+            color: np.foregroundDim
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.textStyle("labelMedium").size
+            font.weight: Theme.textStyle("labelMedium").weight
         }
 
-        Row {
-            anchors.centerIn: parent
-            spacing: 2
-
-            IconButton {
-                icon: "shuffle"
-                iconFilled: Player.shuffle
-                iconSize: 21
-                size: 38
-                iconColor: Player.shuffle ? np.accent : np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: Player.shuffle ? "随机播放：开" : "随机播放：关"
-                onClicked: Player.toggleShuffle()
-            }
-
-            IconButton {
-                icon: Player.repeatMode === "ONE" ? "repeat_one" : "repeat"
-                iconFilled: Player.repeatMode !== "OFF"
-                iconSize: 21
-                size: 38
-                iconColor: Player.repeatMode === "OFF" ? np.foregroundDim : np.accent
-                hoverColor: np.hoverFill
-                tooltip: Player.repeatMode === "ONE" ? "单曲循环"
-                       : (Player.repeatMode === "ALL" ? "列表循环" : "不循环")
-                onClicked: Player.cycleRepeatMode()
-            }
-
-            IconButton {
-                icon: "queue_music"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "播放队列"
-                onClicked: Nav.openQueuePanel()
-            }
-
-            IconButton {
-                icon: "graphic_eq"
-                iconSize: 21
-                size: 38
-                iconColor: Player.equalizerEnabled ? np.accent : np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "音效与倍速"
-                onClicked: Nav.openEffectsPanel()
-            }
-
-            IconButton {
-                icon: "volume_up"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "音量"
-                onClicked: Nav.openVolumePanel()
-            }
-
-            IconButton {
-                icon: "bedtime"
-                iconSize: 21
-                size: 38
-                iconColor: Player.sleepTimer && Player.sleepTimer.active ? np.accent : np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "睡眠定时器"
-                onClicked: Nav.openSleepPanel()
-            }
-
-            IconButton {
-                icon: "download"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "下载"
-                onClicked: Nav.openDownloadsPanel()
-            }
-
-            Item {
-                width: 1
-                height: 38
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 1
-                    height: 18
-                    color: Theme.withAlpha(np.foreground, 0.16)
-                }
-            }
-
-            IconButton {
-                icon: "comment"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "评论"
-                onClicked: {
-                    if (typeof Nav.openCommentsPanel === "function")
-                        Nav.openCommentsPanel()
-                    else
-                        Nav.openPanel("comments")
-                }
-            }
-
-            IconButton {
-                icon: "group"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "一起听"
-                onClicked: {
-                    if (typeof Nav.openListenTogetherPanel === "function")
-                        Nav.openListenTogetherPanel()
-                    else
-                        Nav.openPanel("listenTogether")
-                }
-            }
-
-            IconButton {
-                icon: "lyrics"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: "全屏歌词"
-                onClicked: root.lyricsRequested()
-            }
-
-            IconButton {
-                icon: Nav.immersive ? "fullscreen_exit" : "fullscreen"
-                iconSize: 21
-                size: 38
-                iconColor: np.foregroundDim
-                hoverColor: np.hoverFill
-                tooltip: Nav.immersive ? "退出沉浸（Esc）" : "沉浸模式"
-                onClicked: root.immersiveRequested()
-            }
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: root.sideMargin
+            anchors.top: parent.top
+            text: root.formatTime(Player.durationMs)
+            color: np.foregroundDim
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.textStyle("labelMedium").size
+            font.weight: Theme.textStyle("labelMedium").weight
         }
     }
 
@@ -237,17 +150,17 @@ Item {
 
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: progress.top
-        height: compact ? 58 : 64
+        y: root.expandAmount * root.expandedRowY
+        height: root.rowHeight
 
-        // 左：红心收藏
+        // 左：红心收藏（两态都在，位置固定）
         IconButton {
             id: favoriteButton
 
             anchors.left: parent.left
             anchors.leftMargin: root.sideMargin
             anchors.verticalCenter: parent.verticalCenter
-            icon: "favorite"
+            icon: Player.favorite ? "favorite" : "favorite_border"
             iconFilled: Player.favorite
             iconSize: 25
             size: 44
@@ -257,16 +170,121 @@ Item {
             onClicked: Player.toggleFavorite()
         }
 
-        // 右：时间
+        // 收起态：时间固定在右下角（hover 后由进度条两端的时间替代）
         Text {
             anchors.right: parent.right
             anchors.rightMargin: root.sideMargin
             anchors.verticalCenter: parent.verticalCenter
+            opacity: Math.max(0, 1 - root.expandAmount * 2)
+            visible: opacity > 0.01
             text: root.formatTime(Player.positionMs) + " / " + root.formatTime(Player.durationMs)
             color: np.foregroundFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.textStyle("labelMedium").size
             font.weight: Theme.textStyle("labelMedium").weight
+        }
+
+        // 左二级组：随机 + 队列/音效/音量
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: root.sideMargin + 44 + Theme.spacingXs
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            opacity: root.expandAmount
+            visible: opacity > 0.01
+
+            IconButton {
+                icon: "shuffle"
+                iconFilled: Player.shuffle
+                iconSize: 20
+                size: 38
+                iconColor: Player.shuffle ? np.accent : np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: Player.shuffle ? "随机播放：开" : "随机播放：关"
+                onClicked: Player.toggleShuffle()
+            }
+
+            IconButton {
+                icon: "queue_music"
+                iconSize: 20
+                size: 38
+                iconColor: np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "播放队列"
+                onClicked: Nav.openQueuePanel()
+            }
+
+            IconButton {
+                icon: "graphic_eq"
+                iconSize: 20
+                size: 38
+                iconColor: Player.equalizerEnabled ? np.accent : np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "音效与倍速"
+                onClicked: Nav.openEffectsPanel()
+            }
+
+            IconButton {
+                icon: "volume_up"
+                iconSize: 20
+                size: 38
+                iconColor: np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "音量"
+                onClicked: Nav.openVolumePanel()
+            }
+        }
+
+        // 右二级组：睡眠/下载/全屏歌词 + 循环
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: root.sideMargin
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            opacity: root.expandAmount
+            visible: opacity > 0.01
+
+            IconButton {
+                icon: "bedtime"
+                iconSize: 20
+                size: 38
+                iconColor: Player.sleepTimer && Player.sleepTimer.active ? np.accent : np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "睡眠定时器"
+                onClicked: Nav.openSleepPanel()
+            }
+
+            IconButton {
+                icon: "download"
+                iconSize: 20
+                size: 38
+                iconColor: np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "下载"
+                onClicked: Nav.openDownloadsPanel()
+            }
+
+            IconButton {
+                icon: "lyrics"
+                iconSize: 20
+                size: 38
+                iconColor: np.foregroundDim
+                hoverColor: np.hoverFill
+                tooltip: "全屏歌词"
+                onClicked: root.lyricsRequested()
+            }
+
+            IconButton {
+                icon: Player.repeatMode === "ONE" ? "repeat_one" : "repeat"
+                iconFilled: Player.repeatMode !== "OFF"
+                iconSize: 20
+                size: 38
+                iconColor: Player.repeatMode === "OFF" ? np.foregroundDim : np.accent
+                hoverColor: np.hoverFill
+                tooltip: Player.repeatMode === "ONE" ? "单曲循环"
+                       : (Player.repeatMode === "ALL" ? "列表循环" : "不循环")
+                onClicked: Player.cycleRepeatMode()
+            }
         }
 
         // 中：上一首 / 播放暂停 / 下一首
@@ -336,15 +354,5 @@ Item {
                 onClicked: Player.next()
             }
         }
-    }
-
-    // ---------------------------------------------------------------- 贴底进度条
-
-    PlayerProgressSlider {
-        id: progress
-
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
     }
 }
