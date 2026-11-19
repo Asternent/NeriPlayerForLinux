@@ -14,7 +14,6 @@ Item {
     readonly property bool wide: width >= wideBreakpoint
 
     // 侧边栏窄于该宽度时收起为纯图标
-    readonly property bool navCollapsed: width < 860
     readonly property real navWidth: navBar.width
 
     // 底部只留迷你播放条
@@ -85,7 +84,6 @@ Item {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        autoCollapsed: shell.navCollapsed
     }
 
     Item {

@@ -7,22 +7,15 @@ import QtQuick.Layouts
 // 看着像手机 App。桌面应用更常见的是**左侧竖向侧边栏**：图标与文字左对齐、选中项以
 // 整行高亮表示、顶部放展开/收起按钮。这里按后者重做。
 //
-// 收起状态：窗口太窄时自动收起；用户手动点按钮后以手动选择为准（宽度够也不再自动展开）。
+// 收起状态保存在设置项 navCollapsed 里（默认收起），重启后保持。
 Item {
     id: bar
 
-    /** 由 AppShell 按窗口宽度传入的自动收起建议。 */
-    property bool autoCollapsed: false
-    /** 用户手动指定的收起状态：null 表示跟随 autoCollapsed。 */
-    property var manualCollapsed: null
-
-    /** 实际是否收起：手动优先，否则跟随窗口宽度。 */
-    readonly property bool collapsed: manualCollapsed === null
-                                          ? autoCollapsed
-                                          : manualCollapsed
+    /** 收起状态直接读设置项，默认收起（重启后沿用上次选择）。 */
+    readonly property bool collapsed: Settings.get("navCollapsed", true) === true
 
     function requestToggle() {
-        bar.manualCollapsed = !bar.collapsed
+        Settings.set("navCollapsed", !bar.collapsed)
     }
 
     readonly property int expandedWidth: 208
