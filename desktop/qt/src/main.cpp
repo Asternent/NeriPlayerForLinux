@@ -44,16 +44,24 @@ QString resolveQmlDir(const QString &explicitDir)
         return QString::fromLocal8Bit(env);
 
     const QString appDir = QCoreApplication::applicationDirPath();
-    for (const QString &candidate : {
-             appDir + QStringLiteral("/../share/neriplayer/qml"),
-             appDir + QStringLiteral("/qml"),
-             appDir + QStringLiteral("/../qml"),
-             QStringLiteral(NERIPLAYER_SOURCE_QML_DIR),
-         }) {
+    // 安装布局：二进制在 /usr/lib/neriplayer，QML 在 /usr/share/neriplayer/qml
+    const QStringList installedCandidates = {
+        appDir + QStringLiteral("/../../share/neriplayer/qml"),
+        appDir + QStringLiteral("/../share/neriplayer/qml"),
+        appDir + QStringLiteral("/share/neriplayer/qml"),
+        appDir + QStringLiteral("/qml"),
+    };
+    for (const QString &candidate : installedCandidates) {
         if (QFileInfo::exists(candidate + QStringLiteral("/Main.qml")))
             return QDir(candidate).absolutePath();
     }
-    return appDir + QStringLiteral("/qml");
+
+    // 开发布局：仅当显式通过环境变量指定，或编译期源码目录确实存在且未安装时使用
+    if (!QStringLiteral(NERIPLAYER_SOURCE_QML_DIR).isEmpty()
+        && QFileInfo::exists(QStringLiteral(NERIPLAYER_SOURCE_QML_DIR) + QStringLiteral("/Main.qml"))) {
+        return QStringLiteral(NERIPLAYER_SOURCE_QML_DIR);
+    }
+    return installedCandidates.first();
 }
 
 } // namespace
