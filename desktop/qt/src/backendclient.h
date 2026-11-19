@@ -49,7 +49,7 @@ public:
 
 signals:
     void connectedChanged();
-    void event(const QString &name, const QVariantMap &data);
+    void event(const QString &name, const QJSValue &data);
     void requestFailed(const QString &method, const QString &message);
 
 private slots:

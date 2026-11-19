@@ -6,8 +6,11 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJSEngine>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QJsonParseError>
+#include <QJsonValue>
 #include <QLocalSocket>
 #include <QProcess>
 #include <QStandardPaths>
@@ -27,6 +30,41 @@ QString defaultSocketPath()
     if (runtimeDir.isEmpty())
         runtimeDir = QDir::tempPath();
     return runtimeDir + QStringLiteral("/neriplayer/core.sock");
+}
+
+/**
+ * 把 JSON 转成 JS 值。这里不用 QJsonValue::toVariant()+QJSEngine::toScriptValue()：
+ * Qt 6 会把 QVariantList 变成「类数组序列对象」，Array.isArray() 为 false，
+ * 而且嵌套数组/对象里也依然是序列对象，QML 侧的 Array.isArray 判断全部失效。
+ * 显式递归构造 QJSValue 数组，保证前后端之间传递的列表就是真正的 JS 数组。
+ */
+QJSValue jsonToJs(QJSEngine *engine, const QJsonValue &value)
+{
+    if (!engine)
+        return QJSValue();
+    if (value.isUndefined() || value.isNull())
+        return QJSValue(QJSValue::NullValue);
+    if (value.isBool())
+        return QJSValue(value.toBool());
+    if (value.isDouble())
+        return QJSValue(value.toDouble());
+    if (value.isString())
+        return QJSValue(value.toString());
+    if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        QJSValue jsArray = engine->newArray(static_cast<quint32>(array.size()));
+        for (int i = 0; i < array.size(); ++i)
+            jsArray.setProperty(static_cast<quint32>(i), jsonToJs(engine, array.at(i)));
+        return jsArray;
+    }
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        QJSValue jsObject = engine->newObject();
+        for (auto it = object.constBegin(); it != object.constEnd(); ++it)
+            jsObject.setProperty(it.key(), jsonToJs(engine, it.value()));
+        return jsObject;
+    }
+    return QJSValue(QJSValue::NullValue);
 }
 
 } // namespace
@@ -140,8 +178,8 @@ void BackendClient::onReadyRead()
         const QJsonObject object = doc.object();
         if (object.contains(QStringLiteral("event"))) {
             const QString name = object.value(QStringLiteral("event")).toString();
-            const QVariantMap data = object.value(QStringLiteral("data")).toObject().toVariantMap();
-            emit event(name, data);
+            QJSEngine *engine = qjsEngine(this);
+            emit event(name, jsonToJs(engine, object.value(QStringLiteral("data"))));
             continue;
         }
         const int id = object.value(QStringLiteral("id")).toInt(-1);
@@ -159,9 +197,7 @@ void BackendClient::onReadyRead()
             args[0] = QJSValue(QJSValue::UndefinedValue);
             args[1] = engine ? engine->toScriptValue(error) : QJSValue();
         } else {
-            args[0] = engine ? engine->toScriptValue(
-                                   object.value(QStringLiteral("result")).toVariant())
-                             : QJSValue();
+            args[0] = jsonToJs(engine, object.value(QStringLiteral("result")));
             args[1] = QJSValue(QJSValue::UndefinedValue);
         }
         callback.call(QJSValueList{args[0], args[1]});
