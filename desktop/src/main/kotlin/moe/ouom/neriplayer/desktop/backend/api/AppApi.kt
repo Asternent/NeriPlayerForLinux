@@ -48,6 +48,9 @@ object AppApi {
     @Volatile
     var openGlobalShortcutSettings: (() -> Unit)? = null
 
+    /** 由 BackendMain 注入：读取系统当前实际生效的全局快捷键（不支持时返回 null）。 */
+    var currentGlobalShortcuts: (() -> Map<String, String>?)? = null
+
     fun register(server: CoreServer, container: AppContainer) {
         server.on("app.ping") { buildJsonObject { put("pong", true) } }
 
@@ -90,6 +93,13 @@ object AppApi {
         server.on("shortcut.openGlobalSettings") {
             openGlobalShortcutSettings?.invoke()
             buildJsonObject { put("ok", openGlobalShortcutSettings != null) }
+        }
+        server.on("shortcuts.current") {
+            val bindings = currentGlobalShortcuts?.invoke()
+            buildJsonObject {
+                put("supported", bindings != null)
+                put("bindings", encodeAny(bindings ?: emptyMap<String, String>()))
+            }
         }
 
         server.on("settings.get") {

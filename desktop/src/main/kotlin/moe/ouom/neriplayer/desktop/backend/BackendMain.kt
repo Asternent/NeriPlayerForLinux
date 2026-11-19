@@ -73,6 +73,7 @@ fun main(args: Array<String>) {
     val shortcuts = GlobalShortcutService(container, server)
     shortcuts.start(runtime)
     AppApi.openGlobalShortcutSettings = { shortcuts.openConfigure() }
+    AppApi.currentGlobalShortcuts = { shortcuts.currentGlobalBindings() }
     server.start()
     publisher.start()
 
