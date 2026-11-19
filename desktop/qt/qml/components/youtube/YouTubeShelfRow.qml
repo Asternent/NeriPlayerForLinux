@@ -91,8 +91,11 @@ Item {
                 delegate: Item {
                     id: cardHost
 
-                    readonly property var entry: modelData
-                    readonly property string kind: entry && entry.kind ? entry.kind : ""
+                    // model 重建时 delegate 会短暂拿到 undefined 的 modelData，
+                    // 这里用空对象兜底并让下面所有访问都做判空，避免 QML TypeError。
+                    readonly property var entry: modelData !== undefined && modelData !== null ? modelData : ({})
+                    readonly property var entrySong: entry ? entry.song : null
+                    readonly property string kind: entry && entry.kind ? String(entry.kind) : ""
 
                     width: kind === "artist" ? 136 : 150
                     height: row.cardRowHeight
@@ -101,18 +104,19 @@ Item {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         width: parent.width
-                        visible: cardHost.kind === "song" && cardHost.entry.song !== null
-                        song: cardHost.entry ? cardHost.entry.song : null
-                        playing: Player.hasSong && Player.song !== null && cardHost.entry.song !== null
-                                 && Player.song.key === cardHost.entry.song.key && Player.playing
+                        visible: cardHost.kind === "song" && cardHost.entrySong !== null && cardHost.entrySong !== undefined
+                        song: cardHost.entrySong
+                        playing: Player.hasSong && Player.song !== null && cardHost.entrySong !== null
+                                 && cardHost.entrySong !== undefined
+                                 && Player.song.key === cardHost.entrySong.key && Player.playing
                         onActivated: {
-                            if (!cardHost.entry || !cardHost.entry.song)
+                            if (!cardHost.entrySong)
                                 return
                             const songs = row.shelfSongs
                             const index = songs.findIndex(function(s) {
-                                return s.key === cardHost.entry.song.key
+                                return s.key === cardHost.entrySong.key
                             })
-                            row.playSong(cardHost.entry.song, songs, index < 0 ? 0 : index)
+                            row.playSong(cardHost.entrySong, songs, index < 0 ? 0 : index)
                         }
                     }
 
