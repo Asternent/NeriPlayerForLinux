@@ -104,6 +104,40 @@ case "$1" in
         if command -v gtk-update-icon-cache >/dev/null 2>&1; then
             gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
         fi
+
+        # 清理 kmenuedit 里本应用的历史残留条目。
+        #
+        # 早期版本的 desktop 文件叫 neriplayer-NeriPlayer.desktop，后来改名为
+        # neriplayer.desktop。用户菜单里因此沉积了两类残留：
+        #   - <Exclude><Filename>neriplayer.desktop</Filename>  → 分类菜单里完全不显示
+        #   - <Include><Filename>neriplayer-NeriPlayer.desktop</Filename> → 指向已不存在的文件
+        # 表现为「开始菜单分类里没有，但 krunner 搜索能搜到」。这里把本应用相关行从菜单
+        # 自定义文件里剔除，让它回到默认归类；只动本应用的行，不碰其它应用配置。
+        for menu_file in /home/*/.config/menus/applications-kmenuedit.menu; do
+            [ -f "$menu_file" ] || continue
+            grep -q 'neriplayer' "$menu_file" 2>/dev/null || continue
+
+            tmp="$(mktemp)" || continue
+            if grep -v -E '<Filename>neriplayer(-NeriPlayer)?\.desktop</Filename>' \
+                    "$menu_file" > "$tmp"; then
+                # 保持原属主/权限，避免菜单文件变成 root 拥有后用户自己改不了
+                owner="$(stat -c '%u:%g' "$menu_file" 2>/dev/null || echo '')"
+                mode="$(stat -c '%a' "$menu_file" 2>/dev/null || echo '')"
+                cat "$tmp" > "$menu_file" || true
+                [ -n "$owner" ] && chown "$owner" "$menu_file" 2>/dev/null || true
+                [ -n "$mode" ] && chmod "$mode" "$menu_file" 2>/dev/null || true
+                # 通知 KDE 重建菜单缓存，让改动立即生效（没有可用工具时静默跳过）
+                menu_user="$(stat -c '%U' "$menu_file" 2>/dev/null || echo '')"
+                if [ -n "$menu_user" ] && [ "$menu_user" != "root" ]; then
+                    if command -v runuser >/dev/null 2>&1; then
+                        runuser -u "$menu_user" -- kbuildsycoca6 >/dev/null 2>&1 || true
+                    elif command -v su >/dev/null 2>&1; then
+                        su -s /bin/sh "$menu_user" -c kbuildsycoca6 >/dev/null 2>&1 || true
+                    fi
+                fi
+            fi
+            rm -f "$tmp"
+        done
         ;;
 esac
 

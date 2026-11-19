@@ -51,3 +51,7 @@ AGENTS.md
 /app/src/androidTest/assets/metadata/synthetic-fixture-provenance.txt
 /app/src/androidTest/assets/metadata/synthetic-free-first-8-provenance.json
 /hidden-api/build/
+
+# Python 字节码（tools 与打包脚本可能产生）
+__pycache__/
+*.pyc
