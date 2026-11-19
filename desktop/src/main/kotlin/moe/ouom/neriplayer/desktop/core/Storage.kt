@@ -165,6 +165,8 @@ data class AppSettings(
     val mprisEnabled: Boolean = true,
     /** 是否已经提示过「已最小化到托盘」。 */
     val trayHintShown: Boolean = false,
+    /** 左侧导航栏是否收起（纯图标模式）。 */
+    val navCollapsed: Boolean = true,
 
     // ---------------------------------------------------------------- 快捷键
     /** 程序内 / 全局快捷键绑定。 */
