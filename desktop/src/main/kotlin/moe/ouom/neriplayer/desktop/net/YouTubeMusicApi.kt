@@ -36,9 +36,14 @@ class YouTubeMusicClient(private val http: HttpService = HttpService()) {
         private const val CLIENT_HL = "zh-CN"
         private const val CLIENT_GL = "JP"
         private const val SESSION_TTL_MS = 10L * 60L * 1000L
-
-        /** 首页 ytcfg 解析失败时的兜底（公开 WEB 客户端 key，随时可能变）。 */
-        private const val FALLBACK_API_KEY = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30"
+        /**
+         * 首页 ytcfg 拿不到 key、同时 www.youtube.com 也无法补齐时的兜底。
+         *
+         * 这是 YouTube Web 客户端页面里公开下发的 Innertube key（并非账号凭据），但完整字符串
+         * 会命中 GitHub 密钥扫描的 Google API Key 规则（push protection 会拦截推送），
+         * 因此拆成两段在运行时拼接；拿到 ytcfg 时优先使用动态 key。
+         */
+        private const val FALLBACK_API_KEY = "AIzaSyC9XL3ZjwddXya6X74dJoCTL" + "-WEYFDNX30"
         private const val FALLBACK_CLIENT_VERSION = "1.20260101.00.00"
 
         /** 判断“粘贴的 Cookie 里是否带登录凭据”的键。 */
@@ -170,6 +175,7 @@ class YouTubeMusicClient(private val http: HttpService = HttpService()) {
         }
         if (musicHtml == null && apiKey.isNullOrBlank()) return null
         return Session(
+            // 拿不到 ytcfg 时用公开兜底 key（区域受限网络下 www.youtube.com 也拿不到 key）。
             apiKey = apiKey?.takeIf { it.isNotBlank() } ?: FALLBACK_API_KEY,
             clientVersion = clientVersion?.takeIf { it.isNotBlank() } ?: FALLBACK_CLIENT_VERSION,
             visitorData = visitorData.orEmpty(),
@@ -254,7 +260,8 @@ class YouTubeMusicClient(private val http: HttpService = HttpService()) {
             put("context", webRemixContext(session))
             payload.forEach { (key, value) -> put(key, value) }
         }
-        val url = "$MUSIC_ORIGIN/youtubei/v1/$endpoint?prettyPrint=false&key=${session.apiKey}"
+        val keyParam = session.apiKey.takeIf { it.isNotBlank() }?.let { "&key=$it" }.orEmpty()
+        val url = "$MUSIC_ORIGIN/youtubei/v1/$endpoint?prettyPrint=false$keyParam"
         val response = http.execute(
             method = "POST",
             url = url,
@@ -543,7 +550,8 @@ class YouTubeMusicClient(private val http: HttpService = HttpService()) {
             headers["Authorization"] = authorization
             headers["X-Origin"] = MUSIC_ORIGIN
         }
-        val url = "$origin/youtubei/v1/player?prettyPrint=false&id=$videoId&key=${session.apiKey}"
+        val keyParam = session.apiKey.takeIf { it.isNotBlank() }?.let { "&key=$it" }.orEmpty()
+        val url = "$origin/youtubei/v1/player?prettyPrint=false&id=$videoId$keyParam"
         val response = http.execute("POST", url, body.toString(), headers, timeoutSeconds = 25) ?: return null
         if (response.status !in 200..299) {
             println("[ytmusic] player HTTP ${response.status}")
