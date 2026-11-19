@@ -16,7 +16,7 @@ Item {
 
     readonly property var arg: Nav.currentArg
     readonly property string argSource: arg && arg.source ? String(arg.source).toUpperCase() : "NETEASE"
-    readonly property string argId: arg && arg.id !== undefined && arg.id !== null ? String(arg.id) : ""
+    readonly property string argId: page.normalizeId(arg && arg.id)
     readonly property string argName: arg && arg.name ? String(arg.name) : ""
     readonly property string argCoverUrl: arg && arg.coverUrl ? String(arg.coverUrl) : ""
     readonly property string argCreator: arg && arg.creator ? String(arg.creator) : ""
@@ -35,6 +35,14 @@ Item {
     property int _seq: 0
     // 只有专辑名、没有数字 id 时（如歌曲菜单按名字降级）用搜索兜底一次。
     property bool _searchTried: false
+
+    /** 空串 / "0" 都不是可用的专辑 id，按名称搜索兜底。 */
+    function normalizeId(value) {
+        const text = value === undefined || value === null ? "" : String(value).trim()
+        if (text === "" || text === "0" || text === "null" || text === "undefined")
+            return ""
+        return text
+    }
 
     readonly property string sourceLabel: {
         switch (page.argSource) {
@@ -97,10 +105,13 @@ Item {
             return ""
         for (let i = 0; i < page.songs.length; i++) {
             const song = page.songs[i]
-            if (song && song.artist === name && song.artistId)
-                return String(song.artistId)
+            if (song && song.artist === name && song.artistId) {
+                const id = page.normalizeId(song.artistId)
+                if (id !== "")
+                    return id
+            }
         }
-        return arg && arg.artistId ? String(arg.artistId) : ""
+        return arg && arg.artistId ? page.normalizeId(arg.artistId) : ""
     }
 
     PageActions {
@@ -155,7 +166,8 @@ Item {
             page.songs = []
             page.loading = false
             page.degraded = true
-            page.degradeText = "缺少 YouTube 专辑 id，无法加载详情"
+            page.degradeText = "该 YouTube 歌曲没有专辑 id，暂无法打开专辑页，可在探索页搜索「"
+                               + page.argName + "」"
             return
         }
 

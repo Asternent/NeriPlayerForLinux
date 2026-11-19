@@ -16,7 +16,7 @@ Item {
 
     readonly property var arg: Nav.currentArg
     readonly property string argSource: arg && arg.source ? String(arg.source).toUpperCase() : "NETEASE"
-    readonly property string argId: arg && arg.id !== undefined && arg.id !== null ? String(arg.id) : ""
+    readonly property string argId: page.normalizeId(arg && arg.id)
     readonly property string argName: arg && arg.name ? String(arg.name) : ""
     readonly property string argAvatarUrl: arg && arg.avatarUrl ? String(arg.avatarUrl) : ""
     readonly property int argSongCount: arg && arg.songCount !== undefined && arg.songCount !== null
@@ -32,6 +32,14 @@ Item {
     property int _seq: 0
     // 只有歌手名、没有数字 id 时（如歌曲菜单按名字降级）用搜索兜底一次。
     property bool _searchTried: false
+
+    /** 空串 / "0" 都不是可用的歌手 id，按名称搜索兜底。 */
+    function normalizeId(value) {
+        const text = value === undefined || value === null ? "" : String(value).trim()
+        if (text === "" || text === "0" || text === "null" || text === "undefined")
+            return ""
+        return text
+    }
 
     readonly property string sourceLabel: {
         switch (page.argSource) {
@@ -165,7 +173,9 @@ Item {
             page.albums = []
             page.loading = false
             page.degraded = true
-            page.degradeText = "B 站暂不支持歌手详情，可到探索页搜索该 UP 主。"
+            page.degradeText = "B 站暂不支持歌手详情，可在探索页按名称搜索「" + page.argName + "」。"
+            if (page.argName === "")
+                page.degradeText = "B 站暂不支持歌手详情，可在探索页搜索该 UP 主。"
             return
         }
         if (page.argId === "" && page.argName === "") {
@@ -176,7 +186,8 @@ Item {
         if (page.argSource === "YOUTUBE" && page.argId === "") {
             page.loading = false
             page.degraded = true
-            page.degradeText = "缺少 YouTube 歌手 id，无法加载详情"
+            page.degradeText = "该 YouTube 歌曲没有歌手 id，暂无法打开歌手页，可在探索页搜索「"
+                               + page.argName + "」"
             return
         }
 
@@ -259,10 +270,15 @@ Item {
             page.loading = false
             return
         }
-        let keyword = page.argName
-        const slash = keyword.indexOf("/")
-        if (slash > 0)
-            keyword = keyword.substring(0, slash).trim()
+        // 网易云多歌手字段形如 "A/B"，逐个短名尝试匹配，避免搜不到整体字符串。
+        const names = [page.argName]
+        const parts = page.argName.split("/")
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].trim()
+            if (part !== "" && names.indexOf(part) < 0)
+                names.push(part)
+        }
+        const keyword = names.length > 1 ? names[1] : names[0]
         Api.call("online.search", {
                      "source": "NETEASE",
                      "keyword": keyword,
@@ -273,7 +289,7 @@ Item {
             const list = result && result.artists ? result.artists : []
             let hit = null
             for (let i = 0; i < list.length; i++) {
-                if (list[i] && (list[i].name === page.argName || list[i].name === keyword)) {
+                if (list[i] && names.indexOf(String(list[i].name || "")) >= 0) {
                     hit = list[i]
                     break
                 }
@@ -408,9 +424,11 @@ Item {
         if (!album)
             return
         const source = album.source ? String(album.source) : page.argSource
+        const albumId = album.id !== undefined && album.id !== null && String(album.id) !== ""
+                        ? page.normalizeId(album.id) : String(album.name || "")
         Nav.push("albumDetail", {
                      "source": source,
-                     "id": album.id !== undefined && album.id !== null ? String(album.id) : String(album.name || ""),
+                     "id": albumId,
                      "name": album.name || "",
                      "coverUrl": album.coverUrl || "",
                      "creator": album.creator || page.headerTitle,
