@@ -69,18 +69,24 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.HorizontalFlick
 
-        // 滚轮横向滚动；已到两端时把事件让给外层纵向滚动
+        // 滚轮横向滚动；到两端时把事件让给外层纵向滚动。
+        // 不用 flick()：Qt 6.11 里对程序化调用它是空操作，直接改 contentX 才有效。
         WheelHandler {
             onWheel: function(wheel) {
-                const delta = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
-                if (delta === 0)
+                let dy = wheel.pixelDelta.y !== 0 ? wheel.pixelDelta.y : wheel.angleDelta.y / 120 * 60
+                let dx = wheel.pixelDelta.x !== 0 ? wheel.pixelDelta.x : wheel.angleDelta.x / 120 * 60
+                const amount = Math.abs(dx) > Math.abs(dy) ? dx : dy
+                if (amount === 0)
                     return
                 const maxX = Math.max(0, hFlick.contentWidth - hFlick.width)
-                const next = Math.max(0, Math.min(maxX, hFlick.contentX - delta))
-                if (next !== hFlick.contentX) {
-                    hFlick.contentX = next
-                    wheel.accepted = true
+                const target = Math.max(0, Math.min(maxX, hFlick.contentX - amount))
+                if (Math.abs(target - hFlick.contentX) < 0.01) {
+                    // 到边界，交给外层纵向滚动
+                    wheel.accepted = false
+                    return
                 }
+                hFlick.contentX = target
+                wheel.accepted = true
             }
         }
 

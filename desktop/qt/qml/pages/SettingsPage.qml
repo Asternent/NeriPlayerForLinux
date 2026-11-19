@@ -668,7 +668,6 @@ Item {
     // ---------------------------------------------------------------- 页面骨架
 
     Flickable {
-        WheelFlickHandler { }
         id: flick
         anchors.fill: parent
         contentWidth: width

@@ -17,6 +17,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickWindow>
+#include <QWheelEvent>
 #include <QTimer>
 #include <QVariant>
 
@@ -96,6 +97,64 @@ void applyManualUiScale()
 
 } // namespace
 
+/**
+ * 触摸板/滚轮滚动倍率。
+ *
+ * 实测本机 KDE Wayland + 触摸板的滚轮事件：
+ *   angleDelta.y = -106, pixelDelta.y = -9, phase = ScrollUpdate,
+ *   source = MouseEventSynthesizedBySystem
+ *
+ * Qt 的 Flickable（qquickflickable.cpp:1751）这样分支：
+ *   if (source == NotSynthesized || pixelDelta.isNull() || phase == NoScrollPhase)
+ *       → 用 angleDelta（受 QStyleHints::wheelScrollLines 影响）
+ *   else
+ *       → 用 pixelDelta（按像素，忽略 wheelScrollLines）
+ * 本机三个条件全为假，走 pixelDelta 分支，所以调 wheelScrollLines 对触摸板无效。
+ *
+ * 处理方式：在原事件上就地放大增量（不新建事件、不重新投递，避免重入与无限放大），
+ * 这样 Qt 后续的分支判断、惯性计算都按放大后的值进行。
+ */
+class WheelScaleFilter : public QObject
+{
+public:
+    explicit WheelScaleFilter(qreal scale, QObject *parent = nullptr)
+        : QObject(parent), m_scale(scale) {}
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override
+    {
+        if (m_scale == 1.0 || event->type() != QEvent::Wheel || !obj->isWindowType())
+            return QObject::eventFilter(obj, event);
+
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        if (wheel->pixelDelta().isNull() && wheel->angleDelta().isNull())
+            return QObject::eventFilter(obj, event);
+
+        // 就地改写：把原事件的内容替换为放大后的值。
+        // 用 placement new 在同一块内存重建（QWheelEvent 无 setter），
+        // 之后不删除也不投递，事件继续沿原有路径传递，因此不会重入。
+        const QPointF pos = wheel->position();
+        const QPointF gpos = wheel->globalPosition();
+        const QPoint pixelDelta = wheel->pixelDelta() * m_scale;
+        const QPoint angleDelta = wheel->angleDelta() * m_scale;
+        const Qt::MouseButtons buttons = wheel->buttons();
+        const Qt::KeyboardModifiers modifiers = wheel->modifiers();
+        const Qt::ScrollPhase phase = wheel->phase();
+        const bool inverted = wheel->inverted();
+        const Qt::MouseEventSource source = wheel->source();
+        const QPointingDevice *device = wheel->pointingDevice();
+
+        wheel->~QWheelEvent();
+        new (wheel) QWheelEvent(pos, gpos, pixelDelta, angleDelta, buttons,
+                                modifiers, phase, inverted, source, device);
+        // 保持 spontaneous 标记，否则 Qt 会当成非真实输入处理
+        return QObject::eventFilter(obj, event);
+    }
+
+private:
+    qreal m_scale;
+};
+
 int main(int argc, char *argv[])
 {
     applyManualUiScale();
@@ -105,6 +164,10 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName(QStringLiteral("NeriPlayer"));
     QGuiApplication::setApplicationVersion(QStringLiteral(NERIPLAYER_VERSION));
     QGuiApplication::setDesktopFileName(QStringLiteral("neriplayer"));
+
+    // 触摸板/滚轮滚动倍率（触摸板实际位移远小于桌面阅读需求，这里整体放大）。
+    WheelScaleFilter wheelScale(8.0);
+    app.installEventFilter(&wheelScale);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("NeriPlayer Qt 前端"));
