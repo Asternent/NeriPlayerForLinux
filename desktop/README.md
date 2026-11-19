@@ -30,8 +30,9 @@ Linux 原生桌面音乐播放器。
 
 ## 下载与安装
 
-从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的
-`neriplayer_<版本>_amd64.deb`：
+从 [Releases](https://github.com/YangQwQ/NeriPlayerForLinux/releases) 下载最新的
+`neriplayer_<版本>_amd64.deb`（早期 Compose Desktop 版本的安装包在
+[Asternent/NeriPlayerForLinux](https://github.com/Asternent/NeriPlayerForLinux/releases)，已停止更新）：
 
 ```bash
 sudo dpkg -i neriplayer_2.0.0_amd64.deb
