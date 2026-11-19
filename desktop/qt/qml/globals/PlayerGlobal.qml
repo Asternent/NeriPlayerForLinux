@@ -27,6 +27,10 @@ QtObject {
     property string coverSeed: ""
     property string coverPath: ""
 
+    // ---- 收藏（播放页红心；由 collections.changed 事件保持同步） ----
+    property bool favorite: false
+    property string favoriteSongKey: ""
+
     readonly property bool playing: state === "PLAYING"
     readonly property bool idle: state === "IDLE"
     readonly property bool hasSong: song !== null && song !== undefined
@@ -34,6 +38,11 @@ QtObject {
     readonly property string artist: song && song.artist ? song.artist : ""
     readonly property string album: song && song.album ? song.album : ""
     readonly property real progress: durationMs > 0 ? Math.min(1, Math.max(0, positionMs / durationMs)) : 0
+
+    // 播放页跳转入口用：在线歌曲才带 artistId/albumId
+    readonly property string songArtistId: song && song.artistId !== undefined && song.artistId !== null ? String(song.artistId) : ""
+    readonly property string songAlbumId: song && song.albumId !== undefined && song.albumId !== null ? String(song.albumId) : ""
+    readonly property string songSource: song && song.source ? String(song.source) : "LOCAL"
 
     function _send(method, params) {
         Api.get(method, params || {}, function(result, error) {
@@ -148,6 +157,44 @@ QtObject {
         return result
     }
 
+    // ---- 收藏 ----
+
+    /** 按当前歌曲重新查询是否已收藏。 */
+    function refreshFavorite() {
+        const current = song
+        if (!current || !current.key) {
+            favoriteSongKey = ""
+            favorite = false
+            return
+        }
+        const key = String(current.key)
+        favoriteSongKey = key
+        Api.call("collections.isFavorite", { songKey: key }).then(function(result) {
+            if (player.favoriteSongKey !== key)
+                return
+            player.favorite = !!(result && result.favorite)
+        }).catch(function() {
+            // 收藏查询失败不影响播放，保持上一次状态即可
+        })
+    }
+
+    /** 红心：乐观更新，失败时回滚并提示。 */
+    function toggleFavorite() {
+        const current = song
+        if (!current)
+            return
+        const target = !favorite
+        favorite = target
+        Api.call("collections.toggleFavorite", { song: current }).then(function(result) {
+            if (result && result.favorite !== undefined)
+                player.favorite = !!result.favorite
+            Toast.show(player.favorite ? "已加入我喜欢的音乐" : "已取消收藏", "info")
+        }).catch(function(error) {
+            player.favorite = !target
+            Toast.show(error && error.message ? error.message : "收藏失败", "error")
+        })
+    }
+
     /** 应用一份播放器状态快照（事件与 app.bootstrap 共用）。 */
     function _apply(data) {
         if (!data)
@@ -171,10 +218,21 @@ QtObject {
         if (data.sleepTimer !== undefined) sleepTimer = data.sleepTimer
         if (data.supportsEffects !== undefined) supportsEffects = data.supportsEffects
         if (data.queueIndex !== undefined) queueIndex = data.queueIndex
+        if (data.coverSeed !== undefined)
+            coverSeed = data.coverSeed ? String(data.coverSeed) : ""
         if (data.lyrics !== undefined && data.lyrics !== null) lyrics = data.lyrics
     }
 
     function applySnapshot(data) { _apply(data) }
+
+    // player 事件 4Hz 快照每次都带 song 对象（引用会变），只在 key 真正变化时查收藏，
+    // 否则会每秒向后端发好几次 collections.isFavorite。
+    onSongChanged: {
+        const key = song && song.key ? String(song.key) : ""
+        if (key === favoriteSongKey)
+            return
+        refreshFavorite()
+    }
 
     // ---- 后端事件 ----
     property Connections backendConnection: Connections {
@@ -193,6 +251,9 @@ QtObject {
                 player.lyricsLoading = !!data.loading
             } else if (name === "player.coverSeed") {
                 player.coverSeed = data.seed || ""
+            } else if (name === "collections.changed") {
+                if (player.hasSong)
+                    player.refreshFavorite()
             }
         }
     }

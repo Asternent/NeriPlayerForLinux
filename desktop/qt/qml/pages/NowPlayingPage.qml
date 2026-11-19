@@ -3,7 +3,9 @@ import QtQuick.Controls
 import "../components"
 import "../components/player"
 
-// 播放页：窄屏单列 / 宽屏左信息 + 右歌词侧栏，另含全屏歌词覆盖层。
+// 播放页（Refined Now Playing 风格）：
+// 封面模糊全屏背景 + 左封面/信息 + 右滚动双语歌词 + 贴底细进度条与控制条。
+// 沉浸模式下 AppShell 隐藏侧栏与底部迷你播放条；页内不再显示「正在播放」标题栏。
 // 数据与命令全部来自全局 Player，浮层面板由 components/PlayerOverlays.qml 承载。
 Item {
     id: page
@@ -13,226 +15,317 @@ Item {
 
     property bool showFullLyrics: false
 
-    // 封面之外的固定高度（标题/进度/传输/工具行），用于矮窗口时收缩封面，避免内容溢出。
-    readonly property real coreFixedHeight: 18 + 52 + 10 + 60 + 14 + 68 + 16 + 48
+    // ---- 控制条自动隐藏 ----
+    readonly property bool autoHideControls: Settings.get("nowPlayingAutoHideControls", true) !== false
+    readonly property int autoHideDelayMs: {
+        const value = Settings.get("nowPlayingAutoHideDelayMs", 2600)
+        return Math.max(400, typeof value === "number" ? value : 2600)
+    }
+    property bool controlsVisible: true
+    property bool controlsHovered: false
 
-    /** 封面：窄屏 220 / 宽屏 300；窗口较矮时收缩，保证整页不溢出。 */
-    readonly property real coverSize: {
-        const available = contentArea.height - page.coreFixedHeight - 12
-        return Math.max(150, Math.min(page.wide ? 300 : 220, available))
+    // ---- 尺寸 ----
+    readonly property real wideLeftWidth: Math.max(320, Math.min(width * 0.45, 560))
+    readonly property real wideCoverSize: Math.max(160, Math.min(280,
+                                                               Math.min(content.height * 0.52,
+                                                                        wideLeftWidth * 0.72)))
+    readonly property real narrowCoverSize: Math.max(88, Math.min(132,
+                                                                 width * 0.17, content.height * 0.18))
+    readonly property real wideLyricsSize: Math.max(18, Math.min(26, content.height * 0.028))
+    readonly property real narrowLyricsSize: Math.max(16, Math.min(21, width * 0.026))
+
+    NowPlayingTheme { id: np }
+
+    /** 鼠标有活动：显示控制条并重新计时。 */
+    function pokeControls() {
+        controlsVisible = true
+        if (autoHideControls && !controlsHovered) {
+            hideTimer.interval = autoHideDelayMs
+            hideTimer.restart()
+        }
     }
 
-    function sourceName(source) {
-        switch (source) {
-        case "LOCAL":
-            return "本地"
-        case "NETEASE":
-            return "网易云"
-        case "BILIBILI":
-            return "哔哩哔哩"
-        case "YOUTUBE":
-            return "YouTube"
-        default:
-            return ""
+    Timer {
+        id: hideTimer
+
+        repeat: false
+        onTriggered: {
+            if (!page.controlsHovered)
+                page.controlsVisible = false
         }
     }
 
-    // ---- 顶部栏 ----
-    Item {
-        id: topBar
-
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 64
-
-        // 沉浸模式下与侧栏一起淡出，鼠标移动时由 AppShell 短暂唤回
-        opacity: Nav.immersive ? 0 : 1
-        visible: opacity > 0.01
-        z: 2
-        Behavior on opacity {
-            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+    onControlsHoveredChanged: {
+        if (controlsHovered) {
+            controlsVisible = true
+            hideTimer.stop()
+        } else {
+            pokeControls()
         }
+    }
 
-        IconButton {
-            id: backButton
+    onAutoHideControlsChanged: {
+        pokeControls()
+    }
 
-            anchors.left: parent.left
-            anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            icon: "arrow_back"
-            iconSize: 24
-            size: 48
-            onClicked: Nav.back()
+    // player 事件 4Hz 快照每次都带 song 对象，直接监听 onSongChanged 会每帧唤醒控制条，
+    // 导致自动隐藏永远不触发；这里只在歌曲 key 真正变化时唤醒。
+    property string _lastSongKey: ""
+
+    Connections {
+        target: Player
+        function onSongChanged() {
+            const key = Player.song && Player.song.key ? String(Player.song.key) : ""
+            if (key === page._lastSongKey)
+                return
+            page._lastSongKey = key
+            page.pokeControls()
         }
+    }
 
-        Column {
-            anchors.left: backButton.right
-            anchors.leftMargin: 8
-            anchors.right: parent.right
-            anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
+    Component.onCompleted: pokeControls()
 
-            Text {
-                text: "正在播放"
-                color: Theme.onSurfaceColor
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.textStyle("titleMedium").size
-                font.weight: Font.DemiBold
-                font.letterSpacing: Theme.textStyle("titleMedium").letterSpacing
-            }
+    // Esc 退出沉浸模式（全屏歌词打开时由它自己的 Esc 处理）
+    Shortcut {
+        sequence: "Escape"
+        enabled: Nav.immersive && !page.showFullLyrics
+        onActivated: page.toggleImmersive()
+    }
 
-            Text {
-                visible: Player.hasSong
-                text: page.sourceName(Player.song && Player.song.source ? Player.song.source : "")
-                color: Theme.onSurfaceVariantColor
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.textStyle("labelSmall").size
-            }
+    function toggleImmersive() {
+        const w = page.Window.window
+        const next = !Nav.immersive
+        Nav.setImmersive(next)
+        if (w) {
+            if (next)
+                w.showFullScreen()
+            else
+                w.showNormal()
         }
+        page.pokeControls()
+    }
 
-    } // topBar 结束
+    // ---------------------------------------------------------------- 背景
+
+    NowPlayingBackground {
+        anchors.fill: parent
+    }
 
     /**
-     * 沉浸模式：进入真正的全屏、隐藏侧边栏，顶栏（返回按钮与标题）保持淡出。
-     * 按钮放在页面根层（不在 topBar 内），这样沉浸时仍可点击退出；
-     * Esc 同样可以退出。
+     * 鼠标活动追踪层：放在内容之下。
+     * 内容里的普通 Item 不接收 hover，事件会落到这一层；带 hover 的按钮/歌词行
+     * 只覆盖一小块区域，它们通过 activity 信号补上报，不会让控制条误隐藏。
      */
-    function toggleImmersive() {
-        Nav.setImmersive(!Nav.immersive)
-        const w = page.Window.window
-        if (!w)
-            return
-        if (Nav.immersive)
-            w.showFullScreen()
-        else
-            w.showNormal()
-    }
+    MouseArea {
+        id: mouseTracker
 
-    IconButton {
-        anchors.right: parent.right
-        anchors.rightMargin: 12
-        anchors.top: parent.top
-        anchors.topMargin: 10
-        z: 5
-        icon: Nav.immersive ? "fullscreen_exit" : "fullscreen"
-        iconSize: 22
-        size: 44
-        // 沉浸时稍微透明，仍然可见可点
-        opacity: Nav.immersive ? 0.5 : 1
-        tooltip: Nav.immersive ? "退出全屏沉浸 (Esc)" : "全屏沉浸模式"
-        onClicked: page.toggleImmersive()
+        anchors.fill: parent
+        z: 0
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton
+        onPressed: page.pokeControls()
 
-        Behavior on opacity {
-            NumberAnimation { duration: 180 }
+        property real lastX: -9999
+        property real lastY: -9999
+
+        onPositionChanged: function(mouse) {
+            // 歌词/布局变化会让 Qt 给静止指针补发 hover 事件，只把真实位移算作活动
+            if (Math.abs(mouse.x - lastX) + Math.abs(mouse.y - lastY) < 2)
+                return
+            lastX = mouse.x
+            lastY = mouse.y
+            page.pokeControls()
+        }
+        // 控制条隐藏时指针会「落回」这一层，entered 不能算活动，否则永远藏不住；
+        // 真实移动由 onPositionChanged 的位移阈值判断。
+        onEntered: {
         }
     }
 
-    // Esc 退出沉浸模式
-    Keys.onEscapePressed: function(event) {
-        if (Nav.immersive) {
-            page.toggleImmersive()
-            event.accepted = true
-        }
-    }
-    Component.onCompleted: forceActiveFocus()
+    // ---------------------------------------------------------------- 内容
 
-    // ---- 内容区 ----
     Item {
-        id: contentArea
+        id: content
 
-        anchors.top: topBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.fill: parent
+        // 窄屏头部从左上角开始，要给顶部浮动按钮（返回/全屏）让出位置
+        anchors.topMargin: page.wide ? Theme.spacingXl : 56
+        anchors.bottomMargin: controls.height
         clip: true
+        // 全屏歌词打开时隐藏页内内容，避免两层歌词叠在一起
+        visible: !page.showFullLyrics
 
-        // 无歌曲：空状态
+        // 无歌曲
         PlayerEmptyState {
             anchors.centerIn: parent
             visible: !page.hasSong
             icon: "music_note"
             title: "暂无播放"
             hint: "在媒体库或探索中选择一首歌开始播放"
-            contentWidth: Math.min(400, contentArea.width - 48)
+            contentWidth: Math.min(420, content.width - 48)
+            iconColor: Theme.withAlpha(np.foreground, 0.4)
+            titleColor: np.foregroundDim
+            hintColor: Theme.withAlpha(np.foreground, 0.5)
         }
 
-        // 窄屏：单列居中
-        Item {
-            anchors.fill: parent
-            visible: page.hasSong && !page.wide
-
-            PlayerCore {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(parent.width - 40, 560)
-                coverSize: page.coverSize
-                onLyricsRequested: page.showFullLyrics = true
-            }
-        }
-
-        // 宽屏：左信息 + 右歌词侧栏（420dp）
+        // ---- 宽屏：左信息 + 右歌词 ----
         Item {
             id: wideLayout
 
             anchors.fill: parent
             visible: page.hasSong && page.wide
 
-            Item {
-                id: leftRegion
+            PlayerCore {
+                id: wideLeft
 
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                anchors.right: lyricsCard.left
-
-                PlayerCore {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(parent.width - 48, 560)
-                    coverSize: page.coverSize
-                    onLyricsRequested: page.showFullLyrics = true
-                }
+                width: page.wideLeftWidth
+                coverSize: page.wideCoverSize
+                onActivity: page.pokeControls()
             }
 
-            // 歌词直接显示在右侧，不套卡片背景，保留一条淡分隔线与左侧区域区分
-            Item {
-                id: lyricsCard
-
+            LyricsPane {
+                anchors.left: wideLeft.right
                 anchors.right: parent.right
-                anchors.rightMargin: 24
+                anchors.rightMargin: Math.max(Theme.spacingXl, parent.width * 0.055)
                 anchors.top: parent.top
-                anchors.topMargin: 8
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 16
-                // 全屏沉浸时歌词区更宽，字号也更大（见 LyricsPane.immersive）
-                width: Nav.immersive ? Math.min(720, parent.width * 0.5) : 420
+                anchors.topMargin: Theme.spacingMd
+                anchors.bottomMargin: Theme.spacingMd
+                baseFontSize: page.wideLyricsSize
+                horizontalPadding: Theme.spacingSm
+                onActivity: page.pokeControls()
+            }
+        }
 
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: 1
-                    color: Theme.withAlpha(Theme.outlineVariant, 0.5)
-                }
+        // ---- 窄屏：横排头部 + 下方歌词 ----
+        Item {
+            id: narrowLayout
 
-                LyricsPane {
-                    anchors.fill: parent
-                    anchors.leftMargin: 24
-                    horizontalPadding: 8
-                    verticalPadding: 16
-                    immersive: Nav.immersive
-                }
+            anchors.fill: parent
+            visible: page.hasSong && !page.wide
+
+            PlayerCore {
+                id: narrowHeader
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: Theme.spacingLg
+                anchors.rightMargin: Theme.spacingLg
+                anchors.top: parent.top
+                height: contentHeight
+                compact: true
+                coverSize: page.narrowCoverSize
+                onActivity: page.pokeControls()
+            }
+
+            LyricsPane {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.spacingSm
+                anchors.top: narrowHeader.bottom
+                anchors.topMargin: Theme.spacingLg
+                anchors.bottom: parent.bottom
+                baseFontSize: page.narrowLyricsSize
+                horizontalPadding: Theme.spacingLg
+                onActivity: page.pokeControls()
             }
         }
     }
 
-    // ---- 全屏歌词覆盖层 ----
+    // ---------------------------------------------------------------- 顶部浮动按钮
+
+    Item {
+        id: topBar
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 64
+        z: 3
+
+        opacity: page.controlsVisible && !page.showFullLyrics ? 1 : 0
+        visible: opacity > 0.01
+
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.motionMedium; easing.type: Easing.OutCubic }
+        }
+
+        HoverHandler {
+            id: topBarHover
+        }
+
+        Connections {
+            target: topBarHover
+            function onHoveredChanged() {
+                if (topBarHover.hovered)
+                    page.pokeControls()
+            }
+        }
+
+        IconButton {
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacingMd
+            anchors.verticalCenter: parent.verticalCenter
+            icon: "keyboard_arrow_down"
+            iconSize: 26
+            size: 44
+            iconColor: np.foregroundDim
+            hoverColor: np.hoverFill
+            tooltip: "收起播放页（Esc 退出沉浸）"
+            onClicked: Nav.back()
+        }
+
+        // 右上角：全屏/沉浸切换（随控制条一起 hover 淡入）
+        IconButton {
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.spacingMd
+            anchors.verticalCenter: parent.verticalCenter
+            icon: Nav.immersive ? "fullscreen_exit" : "fullscreen"
+            iconSize: 22
+            size: 44
+            iconColor: np.foregroundDim
+            hoverColor: np.hoverFill
+            tooltip: Nav.immersive ? "退出全屏沉浸 (Esc)" : "全屏沉浸模式"
+            onClicked: page.toggleImmersive()
+        }
+    }
+
+    // ---------------------------------------------------------------- 底部控制条
+
+    NowPlayingControls {
+        id: controls
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        compact: !page.wide
+        visible: !page.showFullLyrics
+        controlsVisible: page.controlsVisible
+        secondaryVisible: page.controlsVisible && page.controlsHovered
+        onActivity: {
+            page.pokeControls()
+        }
+        onLyricsRequested: page.showFullLyrics = true
+        onImmersiveRequested: page.toggleImmersive()
+
+        Connections {
+            target: controls
+            function onHoveredChanged() {
+                page.controlsHovered = controls.hovered
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- 全屏歌词
+
     FullScreenLyrics {
         id: fullLyrics
 
         anchors.fill: parent
+        z: 20
         visible: page.showFullLyrics
         onCloseRequested: page.showFullLyrics = false
     }

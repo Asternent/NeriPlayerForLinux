@@ -39,8 +39,12 @@ Item {
             resolvedPath = ArtworkCache.resolved[url]
             return
         }
-        if (ArtworkCache.pending[url] === true)
+        if (ArtworkCache.pending[url] === true) {
+            // 同一封面 URL 可能被多个 CoverArt 实例同时使用（播放页大封面 + 迷你条等），
+            // 只有第一个实例会真正发起请求；其余实例等缓存写入后自己取回路径。
+            retryTimer.watch(url)
             return
+        }
         ArtworkCache.pending[url] = true
         const requestedUrl = url
         Api.get("artwork.resolve", { "url": requestedUrl }, function(result, error) {
@@ -56,6 +60,40 @@ Item {
     onUrlChanged: resolveRemote()
     onPathChanged: resolveRemote()
     Component.onCompleted: resolveRemote()
+
+    /**
+     * 其他实例正在解析同一个 URL 时，轮询共享缓存等它完成。
+     * pending 标记由发起请求的实例在回调里清除，所以仅凭它无法触发本实例的重新解析。
+     */
+    Timer {
+        id: retryTimer
+
+        property string watchUrl: ""
+        property int tries: 0
+
+        interval: 120
+        repeat: true
+
+        function watch(url) {
+            if (url === "" || url === undefined)
+                return
+            watchUrl = url
+            tries = 0
+            restart()
+        }
+
+        onTriggered: {
+            const cached = ArtworkCache.resolved[watchUrl]
+            if (cached !== undefined) {
+                if (cover.url === watchUrl)
+                    cover.resolvedPath = cached
+                stop()
+                return
+            }
+            if (++tries > 50 || ArtworkCache.pending[watchUrl] !== true)
+                stop()
+        }
+    }
 
     Rectangle {
         id: background
