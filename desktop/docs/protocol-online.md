@@ -39,7 +39,7 @@
 
 | method | params | result |
 | --- | --- | --- |
-| `online.home` | — | `{continuePlaying, guessYouLike, hotTracks, newSongs, radar, hotLists, sections, errors}` |
+| `online.home` | `{refresh?}` | `{loggedIn, sections, errors, continuePlaying, guessYouLike, hotTracks, newSongs, radar, hotLists}` |
 | `online.search` | `{source, keyword, page?, kind?}` | `{songs:[Song], collections:[OnlineCollection], artists:[OnlineArtist]}` |
 | `online.hotSearches` | `{source}` | `{keywords:[string]}` |
 | `online.searchSuggest` | `{source, keyword}` | `{keywords:[string]}` |
@@ -57,35 +57,61 @@
 
 ## 3. 首页聚合 `online.home`
 
-一次请求拿齐首页所有在线区块；**不会整体失败**：失败/禁用的区块返回空数组并写进 `errors`。
+一次请求拿齐首页所有在线区块；**不会整体失败**：失败/禁用的区块不下发并写进 `errors`。
+
+参数：`{refresh?: Boolean}` —— 传 `true` 绕过后端 120 秒短缓存（下拉刷新用）。
 
 ```jsonc
 {
-  "continuePlaying": {"songs": [Song, ...]},        // 本地播放历史最近 12 首（非在线数据）
-  "guessYouLike":    {"songs": [Song, ...]},        // 为你推荐（网易云「热门歌曲」搜索，18 首）
-  "hotTracks":       {"songs": [Song, ...]},        // 热歌榜（榜单详情前 18 首）
-  "newSongs":        {"songs": [Song, ...]},        // 推荐新歌（18 首）
-  "radar":           {"collections": [...]},        // 私人雷达（推荐歌单 12 个）
-  "hotLists":        {"collections": [...]},        // 热门榜单（topplist 前 12 个）
-  "sections": [                                      // 有序渲染列表，避免前端硬编码标题/顺序
-    {"id": "continuePlaying", "title": "继续播放",  "kind": "songs",       "songs": [...]},
-    {"id": "guessYouLike",    "title": "为你推荐",  "kind": "songs",       "songs": [...]},
-    {"id": "hotTracks",       "title": "热歌榜",    "kind": "songs",       "songs": [...]},
-    {"id": "newSongs",        "title": "推荐新歌",  "kind": "songs",       "songs": [...]},
-    {"id": "radar",           "title": "私人雷达",  "kind": "collections", "collections": [...]},
-    {"id": "hotLists",        "title": "热门榜单",  "kind": "collections", "collections": [...]}
+  "loggedIn": false,                 // 网易云是否已登录（决定有没有登录专属栏目）
+  "sections": [                      // 有序栏目列表，前端按 kind 渲染
+    {"id": "continuePlaying", "title": "继续播放", "kind": "songs",       "count": 6,  "songs": [Song, ...]},
+    {"id": "guessYouLike",    "title": "猜你喜欢", "kind": "songs",       "count": 18, "songs": [...]},
+    {"id": "dailyRecommend",  "title": "每日推荐", "kind": "songs",       "count": 32, "songs": [...]},   // 仅登录
+    {"id": "privateFm",       "title": "私人 FM",  "kind": "songs",       "count": 5,  "songs": [...]},   // 仅登录
+    {"id": "ranks",           "title": "排行榜",   "kind": "groups", "groups": [
+        {"id": "hot",     "title": "热歌榜", "kind": "songs", "count": 18, "songs": [...]},
+        {"id": "soaring", "title": "飙升榜", "kind": "songs", "count": 18, "songs": [...]},
+        {"id": "new",     "title": "新歌榜", "kind": "songs", "count": 18, "songs": [...]}]},
+    {"id": "newSongs",        "title": "推荐新歌", "kind": "songs",       "count": 18, "songs": [...]},
+    {"id": "radar",           "title": "雷达歌单", "kind": "collections", "count": 5,  "collections": [...]},
+    {"id": "playlists",       "title": "推荐歌单", "kind": "groups", "groups": [
+        {"id": "personalized", "title": "个性化推荐", "kind": "collections", "count": 12, "collections": [...]},
+        {"id": "daily",        "title": "每日推荐歌单", "kind": "collections", ...},  // 仅登录
+        {"id": "quality",      "title": "精品歌单", "kind": "collections", ...},
+        {"id": "hot",          "title": "热门歌单", "kind": "collections", ...},
+        {"id": "acg",          "title": "ACG 歌单",  "kind": "collections", ...}]},
+    {"id": "biliMusic",       "title": "B站音乐", "kind": "groups", "groups": [
+        {"id": "hot",     "title": "热门榜",   "kind": "songs", ...},
+        {"id": "original","title": "原创榜",   "kind": "songs", ...},
+        {"id": "videos",  "title": "热门音乐", "kind": "songs", ...}]}
   ],
-  "errors": []                                       // 失败说明（中文），空数组表示全部正常
+  "errors": ["登录网易云后可解锁每日推荐、私人 FM 和每日推荐歌单"],
+
+  // ---- 兼容字段（旧前端/探索页仍在使用，内容与 sections 对应项一致）----
+  "continuePlaying": {"songs": [...]},
+  "guessYouLike":    {"songs": [...]},
+  "hotTracks":       {"songs": [...]},
+  "newSongs":        {"songs": [...]},
+  "radar":           {"collections": [...]},
+  "hotLists":        {"collections": [...]}
 }
 ```
 
-- 每个区块固定是 `{songs:[...]}` 或 `{collections:[...]}`；`kind` 告诉你该读哪一个字段
-  （另一个字段可能是 `null` 或缺省）。
-- `sections` 里顶部区块**总是存在**（字段为空数组时也保留），QML 可自行跳过空区块；
-  `continuePlaying` 只有本地有播放历史时才会出现在 `sections` 里（字段本身始终存在）。
-- `errors` 典型内容：`"网易云音源已在设置中禁用"`、`"首页推荐加载失败：<原因>"`。
-- 耗时：网易云首页内部是 6+ 次串行请求，**正常网络约 1~3 秒**，前端应显示加载态；
-  建议加载一次后缓存，下拉刷新再重新调用。
+- 栏目 `kind` 只有三种：`songs` / `collections` / `groups`；`groups` 里每一项同构（带 `id/title/kind/count` + 自己的 `songs` 或 `collections`），
+  前端用 tab 切换（排行榜 3 tab、推荐歌单最多 5 tab、B站音乐 3 tab）。
+- 未登录的登录专属栏目（每日推荐 / 私人 FM / 每日推荐歌单）**不下发**，`errors` 里给一条以「登录」开头的中文提示，
+  前端据此渲染登录引导卡（点击 `Nav.openLoginPanel("NETEASE")`）而不是红色错误卡。
+- 音源被设置禁用时，对应栏目整体不下发并写入 `errors`；空栏目不下发。
+- 后端有 120 秒短缓存（按音源开关与登录态区分），冷启动约 0.8~1.5 秒，命中缓存约 0.02 秒。
+- QML 用法：
+
+```js
+Api.call("online.home", refresh ? { "refresh": true } : {}).then(r => {
+    sections = r.sections
+    if (r.errors.length > 0) Toast.show(r.errors.join("；"), "error")
+})
+```
 
 ## 4. 搜索
 
