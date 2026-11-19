@@ -353,7 +353,11 @@ bool BackendClient::tryStartBackend()
          << QStringLiteral("-XX:+UseStringDeduplication")
          << QStringLiteral("-XX:MaxHeapFreeRatio=40")
          << QStringLiteral("-XX:MinHeapFreeRatio=10")
-         << QStringLiteral("-jar") << jar;
+         << QStringLiteral("-jar") << jar
+         // 告诉后端自己的 pid：前端异常退出时后端据此自行退出，避免遗留孤儿进程
+         // 占着 MPRIS/托盘 DBus 名字让下次启动的实例没有托盘图标。
+         << QStringLiteral("--parent-pid")
+         << QString::number(QCoreApplication::applicationPid());
 
     qint64 pid = -1;
     const bool started = QProcess::startDetached(java, args, QDir::homePath(), &pid);
