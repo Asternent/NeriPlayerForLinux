@@ -228,31 +228,29 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
 
+                    // 右侧功能按钮统一带 tooltip；歌单（队列）放在最右边——
+                    // 它是最常用的入口，放在末尾更符合「主操作靠边」的习惯。
                     IconButton {
                         icon: "volume_up"
                         iconSize: 19
                         size: 34
+                        tooltip: "音量"
                         onClicked: Nav.openVolumePanel()
                     }
                     IconButton {
                         icon: "graphic_eq"
                         iconSize: 19
                         size: 34
+                        tooltip: "音效"
                         onClicked: Nav.openEffectsPanel()
-                    }
-                    IconButton {
-                        icon: "queue_music"
-                        iconSize: 19
-                        size: 34
-                        onClicked: Nav.openQueuePanel()
                     }
                     IconButton {
                         icon: "bedtime"
                         iconSize: 19
                         size: 34
+                        tooltip: "睡眠定时"
                         onClicked: Nav.openSleepPanel()
                     }
-                    // 最右侧按钮：悬浮歌词开关（不再进入播放页）。
                     IconButton {
                         icon: "lyrics"
                         iconSize: 19
@@ -262,6 +260,13 @@ Item {
                         tooltip: "悬浮歌词"
                         onClicked: Settings.set("floatingLyricsEnabled",
                                                 !(Settings.get("floatingLyricsEnabled", false) === true))
+                    }
+                    IconButton {
+                        icon: "queue_music"
+                        iconSize: 19
+                        size: 34
+                        tooltip: "播放队列"
+                        onClicked: Nav.openQueuePanel()
                     }
                 }
             }
