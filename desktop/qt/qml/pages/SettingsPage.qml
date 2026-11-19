@@ -1796,6 +1796,8 @@ Item {
                 title: "关于"
                 description: "版本信息与开源地址"
                 icon: "info"
+                // 关于只有几条信息，保持展开；其余分组默认折叠
+                expanded: true
 
                 SettingsInfoRow {
                     width: parent.width

@@ -2,6 +2,7 @@ import QtQuick
 import "../"
 
 // 设置页卡片容器：左侧主色图标 + 半粗标题 + 说明，点击标题栏折叠/展开内容。
+// 默认折叠，只有「关于」这类信息量小的分组保持展开。
 // 外观对齐旧 Compose 的 SettingsSection：圆角 20、卡片外边距 h12 v6、内边距 v8，
 // 标题栏 h16 v10、内容区 h16 v4。
 Item {
@@ -10,7 +11,8 @@ Item {
     property string title: ""
     property string description: ""
     property string icon: "settings"
-    property bool expanded: true
+    /** 是否展开。默认折叠，避免设置页一进来就是很长的列表；个别分组可显式设为 true。 */
+    property bool expanded: false
 
     // 内容插槽。子项直接声明即可，需要自行设置 width: parent.width。
     default property alias content: contentColumn.data
