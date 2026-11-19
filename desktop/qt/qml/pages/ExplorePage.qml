@@ -3,23 +3,40 @@ import QtQuick.Controls
 import "../components"
 import "../components/explore"
 import "../components/library"
+import "../components/youtube"
 
 // 探索页：音源切换 + 搜索 + 搜索历史 / 热门搜索 / 风格标签 / 推荐歌单。
-// 对应 Compose 版 ExploreScreen；数据全部来自后端 online.* 命令。
+// 对应 Compose 版 ExploreScreen；数据全部来自后端 online.* / ytmusic.* 命令。
+//
+// YouTube 音源（ytmusic.*，协议见 desktop/docs/protocol-youtube.md）：
+// - 未登录时内嵌「粘贴 Cookie」登录卡（桌面没有 WebView）；
+// - 搜索分「全部 / 单曲 / 专辑 / 歌手 / 歌单」，结果卡片复用库里的组件；
+// - 匿名也能搜歌 / 浏览公开首页推荐（播放直链与个性化需要登录）。
 Item {
     id: page
 
     readonly property var sources: {
+        // 读取一次 Settings.values，让这个绑定依赖设置对象；只调 Settings.get 不会建立依赖。
+        const settings = Settings.values
         const list = []
         if (Settings.get("neteaseEnabled", true) !== false)
             list.push({ "id": "NETEASE", "name": "网易云" })
         if (Settings.get("bilibiliEnabled", true) !== false)
             list.push({ "id": "BILIBILI", "name": "哔哩哔哩" })
+        if (Settings.get("youtubeEnabled", false) === true)
+            list.push({ "id": "YOUTUBE", "name": "YouTube" })
         if (list.length === 0)
             list.push({ "id": "NETEASE", "name": "网易云" })
         return list
     }
-    readonly property string sourceName: source === "BILIBILI" ? "哔哩哔哩" : "网易云"
+    readonly property string sourceName: {
+        if (source === "BILIBILI")
+            return "哔哩哔哩"
+        if (source === "YOUTUBE")
+            return "YouTube"
+        return "网易云"
+    }
+    readonly property bool youtube: source === "YOUTUBE"
 
     readonly property var searchHistory: {
         // Settings.get 返回的是 QVariantList 包装（Array.isArray 为 false），这里转成普通数组。
@@ -39,6 +56,23 @@ Item {
     property var tagCollections: []
     property var results: ({ "songs": [], "collections": [], "artists": [] })
 
+    // ---- YouTube 专有状态 ----
+    property bool ytLoggedIn: false
+    property var ytAccount: null
+    property var ytSections: []
+    property string ytMessage: ""
+    property bool _ytEnabled: false
+    /** YouTube 搜索过滤："" / SONG / ALBUM / ARTIST / PLAYLIST */
+    property string ytKind: ""
+
+    readonly property var ytKinds: [
+        { "id": "", "name": "全部" },
+        { "id": "SONG", "name": "单曲" },
+        { "id": "ALBUM", "name": "专辑" },
+        { "id": "ARTIST", "name": "歌手" },
+        { "id": "PLAYLIST", "name": "歌单" }
+    ]
+
     readonly property var resultSongs: results && results.songs ? results.songs : []
     readonly property var resultCollections: results && results.collections ? results.collections : []
     readonly property var resultArtists: results && results.artists ? results.artists : []
@@ -52,6 +86,7 @@ Item {
 
     readonly property bool defaultContentEmpty: searchHistory.length === 0 && hotKeywords.length === 0
                                                 && tags.length === 0 && recommended.length === 0
+                                                && ytSections.length === 0
     readonly property bool showDefaultLoading: defaultLoading && defaultContentEmpty
 
     property int _defaultSeq: 0
@@ -60,6 +95,8 @@ Item {
 
     // 调试开关：非空时自动搜索「周杰伦」用于截图验证（search/collection/artist），默认关闭，不影响正常使用。
     property string __autoDemo: ""
+    // 调试开关：非空时启动即切到该音源（截图用），默认关闭。
+    property string __autoSource: ""
 
     PageActions {
         id: actions
@@ -78,7 +115,19 @@ Item {
             source = sources[0].id
     }
 
-    onSourcesChanged: ensureValidSource()
+    function applyAutoSource() {
+        if (page.__autoSource === "" || page.__autoSource === page.source)
+            return
+        for (let i = 0; i < page.sources.length; i++) {
+            if (page.sources[i].id === page.__autoSource)
+                page.setSource(page.__autoSource)
+        }
+    }
+
+    onSourcesChanged: {
+        ensureValidSource()
+        applyAutoSource()
+    }
 
     function setSource(id) {
         if (source === id)
@@ -86,9 +135,19 @@ Item {
         source = id
         activeTag = ""
         tagCollections = []
+        ytKind = ""
         results = emptyResults()
         errorMessage = ""
-        reloadDefault()
+        if (source === "YOUTUBE") {
+            hotKeywords = []
+            tags = []
+            recommended = []
+            loadYouTubeDefault()
+        } else {
+            ytSections = []
+            ytMessage = ""
+            reloadDefault()
+        }
         if (submittedQuery !== "")
             runSearch(submittedQuery, false)
         else
@@ -127,6 +186,13 @@ Item {
         const seq = ++page._searchSeq
         if (recordHistory !== false)
             saveHistory(trimmed)
+        if (page.youtube)
+            runYouTubeSearch(trimmed, seq)
+        else
+            runOnlineSearch(trimmed, seq)
+    }
+
+    function runOnlineSearch(trimmed, seq) {
         Api.call("online.search", { source: page.source, keyword: trimmed, page: 1 }).then(function(result) {
             if (seq !== page._searchSeq)
                 return
@@ -141,6 +207,54 @@ Item {
             page.loading = false
             Toast.show("搜索失败：" + page.errorMessage, "error")
         })
+    }
+
+    function runYouTubeSearch(trimmed, seq) {
+        const params = { "query": trimmed }
+        if (page.ytKind !== "")
+            params["kind"] = page.ytKind
+        Api.call("ytmusic.search", params).then(function(result) {
+            if (seq !== page._searchSeq)
+                return
+            page.results = page.mapYouTubeResults(result)
+            page.loading = false
+        }).catch(function(error) {
+            if (seq !== page._searchSeq)
+                return
+            page.results = page.emptyResults()
+            page.errorMessage = error && error.message ? error.message : "YouTube 搜索失败"
+            page.loading = false
+            Toast.show("搜索失败：" + page.errorMessage, "error")
+        })
+    }
+
+    /** ytmusic.search 的四类结果 → 现有搜索结果组件需要的 songs / collections / artists。 */
+    function mapYouTubeResults(result) {
+        const data = result || {}
+        const collections = []
+        if (page.ytKind === "" || page.ytKind === "ALBUM") {
+            const albums = data.albums || []
+            for (let i = 0; i < albums.length; i++)
+                collections.push(albums[i])
+        }
+        if (page.ytKind === "" || page.ytKind === "PLAYLIST") {
+            const playlists = data.playlists || []
+            for (let i = 0; i < playlists.length; i++)
+                collections.push(playlists[i])
+        }
+        return {
+            "songs": page.ytKind === "" || page.ytKind === "SONG" ? (data.songs || []) : [],
+            "collections": collections,
+            "artists": page.ytKind === "" || page.ytKind === "ARTIST" ? (data.artists || []) : []
+        }
+    }
+
+    function setYouTubeKind(kind) {
+        if (page.ytKind === kind)
+            return
+        page.ytKind = kind
+        if (page.submittedQuery !== "")
+            page.runSearch(page.submittedQuery, false)
     }
 
     function resetSearch() {
@@ -163,7 +277,7 @@ Item {
     // ---------------------------------------------------------------- 标签
 
     function runTag(tagName) {
-        if (tagName === "")
+        if (tagName === "" || page.youtube)
             return
         activeTag = tagName
         submittedQuery = ""
@@ -205,6 +319,10 @@ Item {
     }
 
     function reloadDefault() {
+        if (page.source === "YOUTUBE") {
+            loadYouTubeDefault()
+            return
+        }
         const seq = ++page._defaultSeq
         _pendingDefault = 0
         defaultLoading = true
@@ -257,19 +375,62 @@ Item {
         }
     }
 
+    /** YouTube 默认内容：登录态 + 公开首页推荐（未登录也能拿到公开 shelf）。 */
+    function loadYouTubeDefault() {
+        const seq = ++page._defaultSeq
+        defaultLoading = true
+        ytSections = []
+        ytMessage = ""
+        Api.call("ytmusic.status").then(function(result) {
+            if (seq !== page._defaultSeq)
+                return null
+            const status = result && result.status ? result.status : null
+            page.ytLoggedIn = !!(status && status.loggedIn)
+            page.ytAccount = status && status.account ? status.account : null
+            return Api.call("ytmusic.home", { "limit": 8 })
+        }).then(function(result) {
+            if (seq !== page._defaultSeq)
+                return
+            page.ytSections = result && result.sections ? result.sections : []
+            page.ytMessage = result && result.message ? String(result.message) : ""
+            page.defaultLoading = false
+        }).catch(function(error) {
+            if (seq !== page._defaultSeq)
+                return
+            page.ytSections = []
+            page.ytMessage = error && error.message ? String(error.message) : "YouTube 推荐加载失败"
+            page.defaultLoading = false
+        })
+    }
+
+    function onYouTubeAccountChanged() {
+        page.loadYouTubeDefault()
+        if (page.submittedQuery !== "")
+            page.runSearch(page.submittedQuery, false)
+    }
+
     // ---------------------------------------------------------------- 跳转 / 播放
+
+    function isYouTubeAlbum(collection) {
+        return collection && String(collection.id).indexOf("MPRE") === 0
+    }
 
     function openCollection(collection) {
         if (!collection)
             return
-        Nav.push("onlineCollection", {
-                      "id": String(collection.id),
-                      "name": collection.name || "",
-                      "source": collection.source || page.source,
-                      "coverUrl": collection.coverUrl || "",
-                      "creator": collection.creator || "",
-                      "trackCount": collection.trackCount || 0
-                  })
+        const sourceName = collection.source || page.source
+        const args = {
+            "id": String(collection.id),
+            "name": collection.name || "",
+            "source": sourceName,
+            "coverUrl": collection.coverUrl || "",
+            "creator": collection.creator || "",
+            "trackCount": collection.trackCount || 0
+        }
+        if (sourceName === "YOUTUBE" && page.isYouTubeAlbum(collection))
+            Nav.push("albumDetail", args)
+        else
+            Nav.push("onlineCollection", args)
     }
 
     function openArtist(artist) {
@@ -291,6 +452,13 @@ Item {
         actions.playSongs(list, index)
     }
 
+    function playYouTubeShelfItem(song, songs, index) {
+        if (!song)
+            return
+        const list = songs && songs.length > 0 ? songs : [song]
+        actions.playSongs(list, index < 0 ? 0 : index)
+    }
+
     function enqueueSong(song) {
         if (!song)
             return
@@ -303,7 +471,9 @@ Item {
     }
 
     Component.onCompleted: {
+        _ytEnabled = Settings.get("youtubeEnabled", false) === true
         ensureValidSource()
+        applyAutoSource()
         if (Api.connected) {
             reloadDefault()
             startDemo()
@@ -313,12 +483,29 @@ Item {
     // 截图/冷启动时页面可能先于后端连接创建，连接建立后再拉一次数据。
     Connections {
         target: Backend
+
         function onConnectedChanged() {
             if (Backend.connected) {
                 page.ensureValidSource()
                 page.reloadDefault()
                 page.startDemo()
             }
+        }
+    }
+
+    // 设置里启停 YouTube 音源后刷新音源列表。
+    Connections {
+        target: Settings
+
+        function onValuesChanged() {
+            const enabled = Settings.get("youtubeEnabled", false) === true
+            const toggled = enabled !== page._ytEnabled
+            page._ytEnabled = enabled
+            page.ensureValidSource()
+            page.applyAutoSource()
+            // 只有开关状态变化时才重载，避免保存搜索历史等设置写入触发无谓的 YouTube 请求
+            if (toggled && page.youtube)
+                page.loadYouTubeDefault()
         }
     }
 
@@ -333,6 +520,7 @@ Item {
 
     Text {
         id: pageTitle
+
         anchors.left: parent.left
         anchors.leftMargin: 20
         anchors.top: parent.top
@@ -346,6 +534,7 @@ Item {
 
     SearchBar {
         id: searchBar
+
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 16
@@ -358,6 +547,7 @@ Item {
 
     Row {
         id: sourceRow
+
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 16
@@ -377,17 +567,47 @@ Item {
         }
     }
 
+    // YouTube 搜索分类（其它音源高度为 0）
     Item {
-        id: contentArea
+        id: kindRow
+
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
         anchors.top: sourceRow.bottom
+        height: page.youtube ? 38 : 0
+
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            visible: page.youtube
+
+            Repeater {
+                model: page.ytKinds
+
+                delegate: TagChip {
+                    text: modelData.name
+                    selected: page.ytKind === modelData.id
+                    onClicked: page.setYouTubeKind(modelData.id)
+                }
+            }
+        }
+    }
+
+    Item {
+        id: contentArea
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: kindRow.bottom
         anchors.topMargin: 6
         anchors.bottom: parent.bottom
         clip: true
 
         Flickable {
             id: scroller
+
             anchors.fill: parent
             visible: !page.loading && !page.showDefaultLoading && page.errorMessage === ""
             contentWidth: width
@@ -397,6 +617,7 @@ Item {
 
             Column {
                 id: scrollColumn
+
                 width: scroller.width
                 spacing: 0
 
@@ -451,6 +672,36 @@ Item {
                     onItemClicked: function(item) { page.openCollection(item) }
                 }
 
+                // ---------------- YouTube：登录卡 + 公开推荐 ----------------
+                Item {
+                    width: scrollColumn.width
+                    height: page.youtube && !page.ytLoggedIn && page.submittedQuery === "" && page.activeTag === ""
+                            ? loginCard.height + Theme.spacingLg * 2 : 0
+                    visible: height > 0
+
+                    YouTubeLoginCard {
+                        id: loginCard
+
+                        x: Theme.spacingLg
+                        y: Theme.spacingLg
+                        width: Math.min(scrollColumn.width - Theme.spacingLg * 2, 560)
+                        onLoginStateChanged: page.onYouTubeAccountChanged()
+                    }
+                }
+
+                Repeater {
+                    model: page.youtube && page.submittedQuery === "" && page.activeTag === "" ? page.ytSections : []
+
+                    delegate: YouTubeShelfRow {
+                        width: scrollColumn.width
+                        title: modelData && modelData.title ? String(modelData.title) : ""
+                        items: modelData && modelData.items ? modelData.items : []
+                        onPlaySong: function(song, songs, index) { page.playYouTubeShelfItem(song, songs, index) }
+                        onOpenCollection: function(collection) { page.openCollection(collection) }
+                        onOpenArtist: function(artist) { page.openArtist(artist) }
+                    }
+                }
+
                 EmptyState {
                     width: scrollColumn.width
                     visible: page.submittedQuery === "" && page.activeTag === ""
@@ -468,6 +719,16 @@ Item {
                     title: "暂无推荐内容"
                     hint: "请检查网络连接，或在设置中开启网易云音源"
                     icon: "explore"
+                }
+
+                EmptyState {
+                    width: scrollColumn.width
+                    visible: page.submittedQuery === "" && page.activeTag === ""
+                             && page.youtube && !page.defaultLoading && page.hasResults === false
+                             && page.ytSections.length === 0 && page.ytMessage !== ""
+                    title: "YouTube 暂无推荐内容"
+                    hint: page.ytMessage
+                    icon: "smart_display"
                 }
 
                 // ---------------- 搜索结果 ----------------
@@ -488,7 +749,8 @@ Item {
                     width: scrollColumn.width
                     visible: page.submittedQuery !== "" && page.activeTag === "" && !page.hasResults
                     title: "无搜索结果"
-                    hint: "尝试更换关键词，或切换到其它音源"
+                    hint: page.youtube ? "尝试更换关键词或分类，YouTube 未登录时也能匿名搜索"
+                                       : "尝试更换关键词，或切换到其它音源"
                     icon: "search"
                 }
 

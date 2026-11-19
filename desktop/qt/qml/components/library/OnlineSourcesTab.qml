@@ -2,8 +2,10 @@ import QtQuick
 // 根目录 components 与本目录存在同名组件（CollectionCard/EmptyState/ErrorCard/LoadingState），
 // 用限定导入避免覆盖同目录组件。
 import ".." as Root
+import "../youtube"
 
-// 媒体库「在线音源」Tab：网易云「我的歌单」/ 哔哩哔哩「收藏夹」。
+// 媒体库「在线音源」Tab：网易云「我的歌单」/ 哔哩哔哩「收藏夹」/ YouTube「我的歌单」。
+// YouTube 没有扫码登录（桌面无 WebView），未登录时直接内嵌「粘贴 Cookie」登录卡。
 //
 // 数据来源（协议见 desktop/docs/protocol-online.md 与 protocol-login.md）：
 //   login.accounts                → 判断当前音源是否已登录
@@ -15,11 +17,15 @@ Item {
 
     // ---- 音源 ----
     readonly property var sources: {
+        // 读取一次 Settings.values，让这个绑定依赖设置对象；只调 Settings.get 不会建立依赖。
+        const settings = Settings.values
         const list = []
         if (Settings.get("neteaseEnabled", true) !== false)
             list.push({ "value": "NETEASE", "label": "网易云" })
         if (Settings.get("bilibiliEnabled", true) !== false)
             list.push({ "value": "BILIBILI", "label": "哔哩哔哩" })
+        if (Settings.get("youtubeEnabled", false) === true)
+            list.push({ "value": "YOUTUBE", "label": "YouTube" })
         return list
     }
     readonly property bool sourcesEmpty: root.sources.length === 0
@@ -90,7 +96,9 @@ Item {
             "coverUrl": item.coverUrl ? String(item.coverUrl) : "",
             "trackCount": Number(item.trackCount) || 0,
             "description": item.description ? String(item.description) : "",
-            "source": item.source ? String(item.source) : fallbackSource
+            "source": item.source ? String(item.source) : fallbackSource,
+            "youtubeAlbum": String(item.source || fallbackSource) === "YOUTUBE"
+                            && id.indexOf("MPRE") === 0
         }
     }
 
@@ -105,11 +113,16 @@ Item {
         return parts.join(" · ")
     }
 
+    readonly property bool youtube: root.source === "YOUTUBE"
+
     function openCollection(collection) {
         if (!collection)
             return
-        // 详情页用 collection.source / id 调 online.collectionDetail。
-        Nav.push("onlineCollection", collection)
+        // 详情页用 collection.source / id；YouTube 专辑走 albumDetail（MPRE 前缀），其余走歌单页。
+        if (collection.youtubeAlbum === true)
+            Nav.push("albumDetail", collection)
+        else
+            Nav.push("onlineCollection", collection)
     }
 
     // ---------------------------------------------------------------- 数据加载
@@ -161,6 +174,8 @@ Item {
 
         if (targetSource === "BILIBILI")
             Api.get("online.biliFavorites", {}, apply)
+        else if (targetSource === "YOUTUBE")
+            Api.get("ytmusic.myPlaylists", {}, apply)
         else
             Api.get("online.myPlaylists", { source: "NETEASE" }, apply)
     }
@@ -200,7 +215,11 @@ Item {
     }
 
     function openLogin() {
-        Nav.openLoginPanel(root.source)
+        // YouTube 面板挂载名固定为 youtubeLogin（由集成方 PlayerOverlays 挂载）
+        if (root.youtube)
+            Nav.openPanel("youtubeLogin")
+        else
+            Nav.openLoginPanel(root.source)
     }
 
     // ---------------------------------------------------------------- 生命周期
@@ -323,12 +342,31 @@ Item {
             text: "正在读取账号状态…"
         }
 
-        // 未登录：登录引导卡
+        // 未登录：扫码登录引导（网易云 / 哔哩哔哩）
         SourceLoginPrompt {
             anchors.fill: parent
-            visible: !root.sourcesEmpty && root.accountsLoaded && !root.loggedIn
+            visible: !root.sourcesEmpty && root.accountsLoaded && !root.loggedIn && !root.youtube
             source: root.source
             onLoginClicked: root.openLogin()
+        }
+
+        // 未登录：YouTube 只能粘贴浏览器 Cookie
+        Flickable {
+            anchors.fill: parent
+            visible: !root.sourcesEmpty && root.accountsLoaded && !root.loggedIn && root.youtube
+            clip: true
+            contentWidth: width
+            contentHeight: youTubeLoginCard.height + Theme.spacingXl * 2
+            boundsBehavior: Flickable.StopAtBounds
+
+            YouTubeLoginCard {
+                id: youTubeLoginCard
+
+                x: Theme.spacingLg
+                y: Theme.spacingLg
+                width: Math.min(parent.width - Theme.spacingLg * 2, 560)
+                onLoginStateChanged: root.loadAccounts()
+            }
         }
 
         // 已登录内容
@@ -344,7 +382,8 @@ Item {
                 anchors.right: parent.right
                 visible: root.loading && root.collections.length === 0
                         && root.errorMessage === "" && !root.needLogin
-                text: "正在加载" + (root.source === "BILIBILI" ? "收藏夹…" : "我的歌单…")
+                text: "正在加载" + (root.source === "BILIBILI" ? "收藏夹…"
+                                    : root.youtube ? " YouTube 歌单…" : "我的歌单…")
             }
 
             ErrorCard {
@@ -369,9 +408,13 @@ Item {
                 anchors.fill: parent
                 visible: !root.loading && !root.needLogin && root.errorMessage === ""
                         && root.collections.length === 0
-                icon: root.source === "BILIBILI" ? "bookmark_border" : "queue_music"
-                title: root.source === "BILIBILI" ? "还没有收藏夹" : "还没有歌单"
-                hint: "当前账号下暂无可浏览的内容，点击右上角刷新重试"
+                icon: root.source === "BILIBILI" ? "bookmark_border"
+                      : root.youtube ? "smart_display" : "queue_music"
+                title: root.source === "BILIBILI" ? "还没有收藏夹"
+                       : root.youtube ? "还没有 YouTube 歌单" : "还没有歌单"
+                hint: root.youtube
+                      ? "YouTube 未登录或账号下没有歌单曲库，登录后可浏览「我的歌单」"
+                      : "当前账号下暂无可浏览的内容，点击右上角刷新重试"
             }
 
             Flickable {
@@ -410,7 +453,9 @@ Item {
                             subtitle: root.subtitleFor(item)
                             coverUrl: item ? item.coverUrl : ""
                             placeholderIcon: item && item.source === "BILIBILI"
-                                             ? "bookmark_border" : "music_note"
+                                             ? "bookmark_border"
+                                             : item && item.source === "YOUTUBE"
+                                               ? "smart_display" : "music_note"
                             onClicked: root.openCollection(item)
                         }
                     }
