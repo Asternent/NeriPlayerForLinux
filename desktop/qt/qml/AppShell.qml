@@ -79,19 +79,60 @@ Item {
         return host
     }
 
+    // 播放页沉浸模式：侧边栏淡出并让内容占满宽度；鼠标移动时暂时显示。
+    readonly property bool immersiveChromeHidden: shell.onNowPlaying && Nav.immersive
+                                                  && !Nav.chromeRevealed
+
+    property Timer chromeHideTimer: Timer {
+        interval: 2500
+        repeat: false
+        onTriggered: Nav.chromeRevealed = false
+    }
+
+    /** 沉浸模式下鼠标移动：显示侧栏/顶栏并开始倒计时隐藏。 */
+    function revealChrome() {
+        if (!shell.immersiveChromeHidden && !shell.onNowPlaying)
+            return
+        Nav.chromeRevealed = true
+        shell.chromeHideTimer.restart()
+    }
+
+    // 覆盖全窗口的悬停检测（沉浸模式启用时才生效）
+    MouseArea {
+        anchors.fill: parent
+        z: -1
+        hoverEnabled: shell.onNowPlaying && Nav.immersive
+        enabled: shell.onNowPlaying && Nav.immersive
+        cursorShape: Qt.ArrowCursor
+        onMouseXChanged: shell.revealChrome()
+        onMouseYChanged: shell.revealChrome()
+    }
+
     NavigationBar {
         id: navBar
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
+        // 沉浸时收起（透明 + 左移），鼠标移动时短暂显示
+        opacity: shell.immersiveChromeHidden ? 0 : 1
+        x: shell.immersiveChromeHidden ? -width : 0
+        visible: opacity > 0.01
+
+        Behavior on opacity {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+        Behavior on x {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
     }
 
     Item {
         id: contentArea
-        anchors.left: navBar.right
+        anchors.left: shell.immersiveChromeHidden ? parent.left : navBar.right
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.bottom: bottomBar.top
+        // 播放页自带完整控制区，不需要底部迷你条，内容延伸到底部
+        anchors.bottom: shell.onNowPlaying ? parent.bottom : bottomBar.top
         clip: true
 
         Item {
@@ -149,8 +190,18 @@ Item {
         anchors.fill: parent
     }
 
+    /** 当前是否在播放页。 */
+    readonly property bool onNowPlaying: Nav.currentName === "nowplaying"
+
+    // 离开播放页时自动退出沉浸模式，避免其它页面也处于隐藏 chrome 状态
+    onOnNowPlayingChanged: function(now) {
+        if (!now && Nav.immersive)
+            Nav.setImmersive(false)
+    }
+
     Item {
         id: bottomBar
+        visible: !shell.onNowPlaying
         anchors.left: navBar.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom

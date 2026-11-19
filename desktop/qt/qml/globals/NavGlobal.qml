@@ -22,6 +22,14 @@ QtObject {
 
     readonly property bool canGoBack: stack.length > 1
 
+    /** 播放页沉浸模式：隐藏侧边栏与顶栏，只留内容；鼠标移动时短暂显示控件。 */
+    property bool immersive: false
+    /** 沉浸模式下鼠标最近移动过、chrome 暂时可见。 */
+    property bool chromeRevealed: false
+    function setImmersive(on) { immersive = on; if (!on) chromeRevealed = false }
+    function toggleImmersive() { setImmersive(!immersive) }
+    function revealChrome() { chromeRevealed = true }
+
     // ---- 主窗口内的浮层面板（队列/音量/音效/睡眠/下载/登录）----
     property string activePanel: ""
     function openPanel(name) { activePanel = name }
@@ -39,6 +47,11 @@ QtObject {
     }
 
     function push(name, arg) {
+        // 已在同一个页面时不再重复入栈：否则连点「打开播放页」会压入多个相同路由，
+        // 返回一次只弹出一层，要按好几次才能回到主页。
+        const top = stack.length > 0 ? stack[stack.length - 1] : null
+        if (top && top.kind === "page" && top.name === name && top.arg === arg)
+            return
         const next = stack.slice()
         next.push({ "kind": "page", "name": name, "arg": arg })
         stack = next

@@ -46,6 +46,16 @@ Item {
         anchors.right: parent.right
         height: 64
 
+        // 沉浸模式下与侧栏一起淡出，鼠标移动时由 AppShell 短暂唤回
+        opacity: (Nav.immersive && !immersiveRevealed) ? 0 : 1
+        visible: opacity > 0.01
+        z: 2
+        Behavior on opacity {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+
+        readonly property bool immersiveRevealed: Nav.chromeRevealed
+
         IconButton {
             id: backButton
 
@@ -83,7 +93,28 @@ Item {
                 font.pixelSize: Theme.textStyle("labelSmall").size
             }
         }
+
+        // 沉浸模式开关：隐藏侧栏与顶栏，鼠标移动时短暂显示；Esc 退出
+        IconButton {
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            icon: Nav.immersive ? "fullscreen_exit" : "fullscreen"
+            iconSize: 22
+            size: 44
+            tooltip: Nav.immersive ? "退出沉浸模式 (Esc)" : "沉浸模式"
+            onClicked: Nav.toggleImmersive()
+        }
     }
+
+    // Esc 退出沉浸模式（优先于其它快捷键）
+    Keys.onEscapePressed: function(event) {
+        if (Nav.immersive) {
+            Nav.setImmersive(false)
+            event.accepted = true
+        }
+    }
+    Component.onCompleted: forceActiveFocus()
 
     // ---- 内容区 ----
     Item {
@@ -143,22 +174,30 @@ Item {
                 }
             }
 
-            Rectangle {
+            // 歌词直接显示在右侧，不套卡片背景，保留一条淡分隔线与左侧区域区分
+            Item {
                 id: lyricsCard
 
                 anchors.right: parent.right
-                anchors.rightMargin: 16
+                anchors.rightMargin: 24
                 anchors.top: parent.top
                 anchors.topMargin: 8
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 16
                 width: 420
-                radius: 24
-                color: Theme.surfaceContainerLow
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 1
+                    color: Theme.withAlpha(Theme.outlineVariant, 0.5)
+                }
 
                 LyricsPane {
                     anchors.fill: parent
-                    horizontalPadding: 24
+                    anchors.leftMargin: 24
+                    horizontalPadding: 8
                     verticalPadding: 16
                 }
             }
