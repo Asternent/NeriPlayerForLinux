@@ -90,15 +90,40 @@ CONTROL
 cat > "$STAGE/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh
 set -e
-if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database -q /usr/share/applications || true
-fi
-if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
-fi
+
+# 只做 freedesktop 标准注册：desktop 文件已安装在 /usr/share/applications，
+# KDE/GTK 会通过目录监视自动发现，不需要（也不应该）手动调 kbuildsycoca6。
+# 注意：kbuildsycoca6 --noincremental 在 postinst 的非交互环境里会生成残缺缓存，
+# 覆盖掉用户完整的菜单缓存，导致开始菜单分类丢失 —— 不要加回来。
+case "$1" in
+    configure)
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+        fi
+        ;;
+esac
+
 exit 0
 POSTINST
 chmod 755 "$STAGE/DEBIAN/postinst"
+
+# 卸载时同样只刷新 MIME 数据库，不碰用户的 KDE 菜单缓存
+cat > "$STAGE/DEBIAN/postrm" <<'POSTRM'
+#!/bin/sh
+set -e
+case "$1" in
+    remove|upgrade|deconfigure)
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+        fi
+        ;;
+esac
+exit 0
+POSTRM
+chmod 755 "$STAGE/DEBIAN/postrm"
 
 echo "==> 打包 .deb"
 mkdir -p "$BUILD_DIR/out"
