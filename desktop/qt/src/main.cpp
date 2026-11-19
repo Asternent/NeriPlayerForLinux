@@ -186,8 +186,11 @@ int main(int argc, char *argv[])
     QCommandLineOption sizeOption(QStringLiteral("size"),
                                   QStringLiteral("窗口尺寸，例如 1180x820"),
                                   QStringLiteral("WxH"));
+    QCommandLineOption argOption(QStringLiteral("arg"),
+                                 QStringLiteral("配合 --page 使用的路由参数（JSON 字符串，例如 {\"source\":\"NETEASE\",\"id\":\"123\"}）"),
+                                 QStringLiteral("json"));
     QCommandLineOption panelOption(QStringLiteral("panel"),
-                                   QStringLiteral("启动后直接打开某个浮层面板：queue/volume/effects/sleep/downloads/login"),
+                                   QStringLiteral("启动后直接打开某个浮层面板：queue/volume/effects/sleep/downloads/login/comments/listenTogether/youtubeLogin"),
                                    QStringLiteral("name"));
     QCommandLineOption screenshotAllOption(QStringLiteral("screenshot-all"),
                                            QStringLiteral("抓取所有顶层窗口后退出（前缀路径，生成 <prefix>-1.png 等）"),
@@ -205,6 +208,7 @@ int main(int argc, char *argv[])
     parser.addOption(screenshotOption);
     parser.addOption(screenshotAllOption);
     parser.addOption(pageOption);
+    parser.addOption(argOption);
     parser.addOption(panelOption);
     parser.addOption(sizeOption);
     parser.addOption(waitOption);
@@ -285,7 +289,11 @@ int main(int argc, char *argv[])
             if (!window->isVisible())
                 window->releaseResources();
         });
-        if (parser.isSet(pageOption))
+        if (parser.isSet(pageOption) && parser.isSet(argOption))
+            QMetaObject::invokeMethod(rootObject, "openPageArgByName",
+                                      Q_ARG(QVariant, parser.value(pageOption)),
+                                      Q_ARG(QVariant, parser.value(argOption)));
+        else if (parser.isSet(pageOption))
             QMetaObject::invokeMethod(rootObject, "openPageByName",
                                       Q_ARG(QVariant, parser.value(pageOption)));
         // --hide-main 时面板由下面的分支统一弹出，避免这里重复调用导致「开了又关」

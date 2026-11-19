@@ -93,7 +93,7 @@ java -jar build/libs/neriplayer-core.jar [--socket <path>] [--no-scan]
 | --- | --- | --- |
 | `player` | 播放状态快照：`{song,state,positionMs,durationMs,volume,shuffle,repeatMode,speed,pitch,loudness,equalizerEnabled,equalizerBands,buffering,sleepTimer,supportsEffects,queueIndex,coverSeed}` | 变化时推送，播放中约 4Hz |
 | `player.queue` | `{songs:[Song], index}` | 队列或当前下标变化 |
-| `player.lyrics` | `{lines:[{timeMs,text,translation}], translated:[…], source, raw}` | 歌词加载/切换 |
+| `player.lyrics` | `{lines:[{timeMs,text,translation,endMs,words:[{startMs,durationMs,text}]}], translated:[…], source, raw}` | 歌词加载/切换 |
 | `player.lyricsLoading` | `{loading}` | 歌词加载开始/结束 |
 | `player.coverSeed` | `{seed}` | 封面主色变化 |
 | `theme` | 见 3.1 | 主题/系统主题/封面种子变化 |
@@ -124,3 +124,6 @@ java -jar build/libs/neriplayer-core.jar [--socket <path>] [--no-scan]
 - `protocol-login.md`（扫码登录）
 - `protocol-download.md`（下载）
 - `protocol-sync.md`（GitHub 同步）
+- `protocol-comments.md`（歌曲评论）
+- `protocol-youtube.md`（YouTube Music 音源）
+- `protocol-listen-together.md`（一起听房间同步）

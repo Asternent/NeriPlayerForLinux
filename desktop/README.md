@@ -20,7 +20,7 @@ Linux 原生桌面音乐播放器。
 | | |
 | --- | --- |
 | 首页：继续播放 / 为你推荐 / 热歌榜 <br> ![首页](docs/screenshots-qt/home.png) | 探索：搜索、热门搜索、风格标签、推荐歌单 <br> ![探索](docs/screenshots-qt/explore.png) |
-| 媒体库：本地 / 收藏 / 在线音源 <br> ![媒体库](docs/screenshots-qt/library.png) | 播放页：封面、进度、歌词侧栏、工具行 <br> ![播放页](docs/screenshots-qt/nowplaying.png) |
+| 媒体库：本地 / 收藏 / 在线音源 <br> ![媒体库](docs/screenshots-qt/library.png) | 播放页：沉浸式封面、双语歌词与 hover 控制条 <br> ![播放页](docs/screenshots-qt/nowplaying.png) |
 | 播放队列面板 <br> ![队列](docs/screenshots-qt/panel-queue.png) | 音效面板：倍速 / 变调 / 响度 / 十段均衡器 <br> ![音效](docs/screenshots-qt/panel-effects.png) |
 | 音量面板 <br> ![音量](docs/screenshots-qt/panel-volume.png) | 睡眠定时器 <br> ![睡眠](docs/screenshots-qt/panel-sleep.png) |
 | 设置：主题 / 媒体库 / 播放 / 下载 / 悬浮歌词 / 账号 / 同步 / 快捷键 <br> ![设置](docs/screenshots-qt/settings.png) | 窄窗口（单栏）设置页 <br> ![窄窗口](docs/screenshots-qt/settings-narrow.png) |
@@ -30,8 +30,9 @@ Linux 原生桌面音乐播放器。
 
 ## 下载与安装
 
-从 [Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) 下载最新的
-`neriplayer_<版本>_amd64.deb`：
+从 [Releases](https://github.com/YangQwQ/NeriPlayerForLinux/releases) 下载最新的
+`neriplayer_<版本>_amd64.deb`（早期 Compose Desktop 版本的安装包在
+[Asternent/NeriPlayerForLinux](https://github.com/Asternent/NeriPlayerForLinux/releases)，已停止更新）：
 
 ```bash
 sudo dpkg -i neriplayer_2.0.0_amd64.deb
@@ -41,6 +42,8 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 - 安装包内置精简 JRE，终端用户**不需要**安装 JDK。
 - 建议安装 `ffmpeg`：用于解码 m4a / aac / opus，并提供倍速、变调、响度增强与十段均衡器；
   缺少时自动降级到 Java Sound 引擎（mp3 / flac / ogg / wav 仍可播放）。
+- 想用 YouTube Music 音源建议安装 `yt-dlp`：YouTube 直链需要 JS 签名解码，后端会优先调用它解析
+  （未安装时回退到内置 Innertube 请求，部分视频可能因 403 无法播放）。
 - 主题默认跟随系统：深浅色取桌面设置，强调色取 KDE/GNOME 的系统强调色；也可以在设置里手动指定主题色或开启「动态取色（封面）」。
 - 首次启动显示使用须知，随后在「设置 → 媒体库」添加音乐文件夹并扫描即可建立本地曲库。
 
@@ -48,11 +51,16 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 
 | 功能 | 状态 |
 | --- | --- |
-| 首页（继续播放 / 为你推荐 / 热歌榜 / 推荐新歌 / 私人雷达 / 热门榜单） | ✅ 网易云公开接口 + 本地历史回退 |
-| 探索（搜索、搜索历史、热门搜索、风格标签、推荐歌单、标签歌单） | ✅ 网易云 / 哔哩哔哩 |
+| 首页（继续播放 / 猜你喜欢 / 每日推荐 / 私人 FM / 排行榜（热歌·飙升·新歌）/ 雷达歌单 / 推荐歌单 / 推荐新歌 / B站音乐榜 / YouTube Music shelves） | ✅ 网易云 + 哔哩哔哩公开接口，未登录栏目自动隐藏并给登录引导，栏目可切换 |
+| 探索（搜索、搜索历史、热门搜索、风格标签、推荐歌单、标签歌单） | ✅ 网易云 / 哔哩哔哩 / YouTube Music（Cookie 登录） |
 | 媒体库（本地歌曲 / 歌手 / 专辑 / 歌单、收藏、搜索与排序） | ✅ 文件夹扫描、读取标签与内嵌封面 |
-| 在线歌单 / 专辑 / 歌手详情 | ✅ 网易云 + 哔哩哔哩（B 站无专辑/标签体系） |
+| 在线歌单 / 专辑 / 歌手详情 | ✅ 网易云 + 哔哩哔哩 + YouTube Music；专辑与歌手为独立详情页（可点歌名/歌手名直达） |
+| 评论区 | ✅ 网易云单曲评论（热门/最新、楼中楼、点赞、发评论需登录）+ B 站评论（尽力）；播放页一键打开 |
+| 一起听 | ✅ 自建 NeriPlayer-LTW 服务端；创建/加入房间、成员、队列与播放同步，与 Android 端协议互通 |
+| YouTube Music 音源 | ✅ 粘贴浏览器 Cookie 登录；Innertube 搜索 / 首页 shelf / 歌单·专辑·歌手 / 播放（推荐安装 yt-dlp 解析直链） |
+| 播放页 | ✅ 沉浸式布局：封面模糊背景、圆形/圆角封面、双语滚动歌词、信息区/歌词约 2:3；hover 时进度条上移、次级按钮在播放行左右展开，播放页始终隐藏侧栏；红心收藏、歌曲信息可复制、封面右键保存/复制链接 |
 | 播放引擎 | ✅ ffmpeg 解码（倍速 / 变调 / 响度 / 十段均衡器）+ Java Sound 回退 |
+| 自动换源 | ✅ 网易云歌曲不可播（VIP/无权限/直链失败）时自动到哔哩哔哩搜索同名音频兜底；设置里可关闭（默认开） |
 | 歌词 | ✅ 本地 `.lrc` → 内嵌标签 → 在线歌词；翻译、逐行高亮、点击跳转、字号调节、全屏歌词 |
 | 悬浮歌词 | ✅ 无边框置顶窗口，可拖动定位、锁定鼠标穿透、描边/阴影样式与颜色可调 |
 | 播放队列 / 音量 / 睡眠定时器 / 音效面板 | ✅ 播放页与迷你播放条均可打开 |
@@ -66,13 +74,14 @@ neriplayer          # 或从应用菜单启动「NeriPlayer」
 | 界面缩放 | ✅ 跟随系统 HiDPI；设置里可选 100%–250% 手动档（下次启动生效） |
 | 与手机端同步协议互通 | ✅ 同一仓库、同一文件格式（JSON 与省流二进制） |
 
-尚未迁移的增强项（后续版本）：媒体库「在线音源」子页（在线歌单 / 收藏夹浏览已可从探索与详情页完成）、
-歌单拖拽排序、快捷键录制交互、设置页宽屏双列布局。旧 Compose Desktop 前端已移除，历史版本见 git 记录。
+尚未迁移的增强项（后续版本）：歌单拖拽排序、快捷键录制交互、设置页宽屏双列布局、
+YouTube 登录后的「我的歌单」分页加载与 continuation 分页。旧 Compose Desktop 前端已移除，历史版本见 git 记录。
 
 ### 与原 Android 应用的差异
 
-状态栏歌词、桌面小组件、启动器快捷方式、USB DAC 独占、省电保活与 ANR 日志、一起听（依赖自建服务端）
-等 Android 平台专有能力不适用；YouTube Music 需要 Google 账号授权与专用解析，桌面端保留配置入口与说明。
+状态栏歌词、桌面小组件、启动器快捷方式、USB DAC 独占、省电保活与 ANR 日志等 Android 平台专有能力不适用。
+一起听在桌面端需要自建 NeriPlayer-LTW 服务端并手动填写地址；YouTube Music 登录走「粘贴浏览器 Cookie」，
+播放直链推荐用 yt-dlp 解析；B 站与本地歌曲没有评论区。
 
 ## 快捷键
 

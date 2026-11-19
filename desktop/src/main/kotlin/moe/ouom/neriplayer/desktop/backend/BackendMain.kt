@@ -5,6 +5,9 @@ import kotlinx.coroutines.awaitCancellation
 import moe.ouom.neriplayer.desktop.backend.api.AppApi
 import moe.ouom.neriplayer.desktop.backend.api.ArtworkApi
 import moe.ouom.neriplayer.desktop.backend.api.CollectionsApi
+import moe.ouom.neriplayer.desktop.backend.api.CommentsApi
+import moe.ouom.neriplayer.desktop.backend.api.ListenTogetherApi
+import moe.ouom.neriplayer.desktop.backend.api.YouTubeMusicApi
 import moe.ouom.neriplayer.desktop.backend.api.DownloadApi
 import moe.ouom.neriplayer.desktop.backend.api.LibraryApi
 import moe.ouom.neriplayer.desktop.backend.api.LoginApi
@@ -30,11 +33,17 @@ import java.nio.file.Paths
 fun main(args: Array<String>) {
     val socketPath = resolveSocketPath(args)
     val noScan = args.contains("--no-scan") || System.getenv("NERIPLAYER_NO_SCAN") == "1"
+    val parentPid = parentPidArg(args)
 
     if (existingInstanceRunning(socketPath)) {
         log("another instance is already running at $socketPath, exiting")
         return
     }
+
+    // 前端进程异常退出（崩溃 / 被 kill）时后端会变成孤儿进程，一直占着
+    // MPRIS 与托盘 DBus 名字，导致下次启动的实例注册失败、没有托盘图标。
+    // 前端启动后端时传入自己的 pid，这里发现前端没了就自行退出。
+    startFrontendWatchdog(parentPid)
 
     val container = AppContainer()
     lateinit var server: CoreServer
@@ -43,6 +52,9 @@ fun main(args: Array<String>) {
     PlayerApi.register(server, container)
     LibraryApi.register(server, container)
     CollectionsApi.register(server, container)
+    CommentsApi.register(server, container)
+    ListenTogetherApi.register(server, container)
+    YouTubeMusicApi.register(server, container)
     OnlineApi.register(server, container)
     LoginApi.register(server, container)
     DownloadApi.register(server, container)
@@ -61,6 +73,7 @@ fun main(args: Array<String>) {
     val shortcuts = GlobalShortcutService(container, server)
     shortcuts.start(runtime)
     AppApi.openGlobalShortcutSettings = { shortcuts.openConfigure() }
+    AppApi.currentGlobalShortcuts = { shortcuts.currentGlobalBindings() }
     server.start()
     publisher.start()
 
@@ -75,6 +88,30 @@ fun main(args: Array<String>) {
     log("neriplayer core ready")
     server.awaitTermination()
     runBlocking { awaitCancellation() }
+}
+
+private fun parentPidArg(args: Array<String>): Long? {
+    val index = args.indexOf("--parent-pid")
+    if (index < 0 || index + 1 >= args.size) return null
+    return args[index + 1].toLongOrNull()?.takeIf { it > 0 }
+}
+
+private fun startFrontendWatchdog(parentPid: Long?) {
+    if (parentPid == null) return
+    Thread({
+        while (true) {
+            Thread.sleep(2_000)
+            val alive = ProcessHandle.of(parentPid).map { it.isAlive }.orElse(false)
+            if (!alive) {
+                log("frontend process $parentPid exited, shutting down backend")
+                kotlin.system.exitProcess(0)
+                return@Thread
+            }
+        }
+    }, "frontend-watchdog").apply {
+        isDaemon = true
+        start()
+    }
 }
 
 private fun resolveSocketPath(args: Array<String>): Path {

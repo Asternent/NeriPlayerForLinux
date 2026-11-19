@@ -80,12 +80,14 @@ Description: NeriPlayer 音理音理 — 多源在线 / 本地音乐播放器（
 Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6qml6 | libqt6qml6t64,
  liblayershellqtinterface6, layer-shell-qt,
  libqt6quick6 | libqt6quick6t64, libqt6network6 | libqt6network6t64, libqt6svg6, libqt6dbus6,
+ libqt6opengl6 | libqt6opengl6t64, libqt6waylandclient6 | libqt6waylandclient6t64, qt6-wayland,
  qml6-module-qtquick, qml6-module-qtquick-window, qml6-module-qtquick-controls,
  qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-dialogs,
  qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtcore, qml6-module-qtnetwork,
+ default-jre-headless | java17-runtime-headless | java-runtime-headless,
  python3, python3-gi, gir1.2-glib-2.0, gir1.2-gtk-3.0, fonts-noto-cjk
-Recommends: ffmpeg, xdg-utils
-Homepage: https://github.com/Asternent/NeriPlayerForLinux
+Recommends: ffmpeg, yt-dlp, xdg-utils
+Homepage: https://github.com/YangQwQ/NeriPlayerForLinux
 CONTROL
 
 cat > "$STAGE/DEBIAN/postinst" <<'POSTINST'

@@ -9,13 +9,20 @@
 > 启动快、占用低，主题与深浅色跟随桌面环境。
 >
 > - 📖 桌面版文档：[`desktop/README.md`](./desktop/README.md)
-> - ⬇️ 下载安装：[Releases](https://github.com/Asternent/NeriPlayerForLinux/releases) → `neriplayer_<版本>_amd64.deb`
+> - ⬇️ 下载安装：[Releases](https://github.com/YangQwQ/NeriPlayerForLinux/releases) → `neriplayer_<版本>_amd64.deb`
 > - 🔄 与原应用**共用同一套 GitHub 同步协议**，歌单 / 收藏 / 最近播放 / 播放统计可双向同步
-> - 🔑 支持网易云与哔哩哔哩应用内扫码登录、本地媒体库、歌词（含悬浮歌词）、多源在线播放
+> - 🔑 支持网易云与哔哩哔哩应用内扫码登录、YouTube Music（粘贴 Cookie 登录）、本地媒体库、歌词（含悬浮歌词）、多源在线播放
 > - 🖥️ 后台常驻：系统托盘（StatusNotifierItem）+ 控制面板 + MPRIS 媒体键 + xdg 全局快捷键
 > - 🎨 Material 3 界面，但深浅色与强调色默认取自 KDE/GNOME 系统设置
+> - 💬 与手机版对齐的新能力：评论区、一起听（NeriPlayer-LTW 协议互通）、红心收藏、专辑/歌手详情页、
+>   首页每日推荐 / 私人 FM / 排行榜 / 雷达 / 推荐歌单 / B站音乐 / YouTube 推荐
+> - 🎧 播放页按 Refined Now Playing 风格重做：封面模糊背景、大封面、双语滚动歌词、沉浸模式与 hover 控制条
 >
 > 桌面版源码位于 [`desktop/`](./desktop) 目录，与上游 Android 工程零重叠，不影响原有工程。
+>
+> **仓库关系**：Android 工程以 [cwuom/NeriPlayer](https://github.com/cwuom/NeriPlayer) 为上游持续同步
+> （`upstream` remote）；早期的 [Asternent/NeriPlayerForLinux](https://github.com/Asternent/NeriPlayerForLinux)
+> 是旧 Compose Desktop 前端的来源，已停止更新，仅作历史参考（`ast` remote）。
 > 下方内容为原 Android 项目的 README，保持原样。
 
 ---

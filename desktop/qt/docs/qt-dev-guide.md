@@ -54,7 +54,10 @@ tools/dev.sh screenshot /tmp/xx.png --page library --wait 2500
   `dev.sh` 已内置），不会弹窗打扰用户；用 RHI 是因为软件后端不支持 MultiEffect 圆角遮罩。
 - 多个进程同时截图时用不同的 `NERI_TEST_ROOT`（单实例 socket 也在该目录下），否则后启动的进程会
   把"激活窗口"发给前一个实例后直接退出。
-- `--page` 可取值：`home/explore/library/settings/nowplaying/recent/stats/downloads/localPlaylist/localArtist/onlineCollection/remoteArtist`。
+- `--page` 可取值：`home/explore/library/settings/nowplaying/recent/stats/downloads/localPlaylist/localArtist/onlineCollection/remoteArtist/albumDetail`。
+- `--page` 需要路由参数时加 `--arg '<JSON>'`，例如
+  `tools/dev.sh screenshot /tmp/a.png --page albumDetail --arg '{"source":"NETEASE","id":"18909"}'`。
+- `--panel <name>` 可直接打开浮层面板：`queue/volume/effects/sleep/downloads/login/comments/listenTogether/youtubeLogin`。
 - 也可以用 `read_image` 工具直接查看截图确认视觉效果。
 
 环境变量：`NERIPLAYER_SOCKET` 指定 socket；`NERIPLAYER_QML_DIR` 指定 QML 目录；`NERIPLAYER_BACKEND_JAR` 让 Qt 自动拉起后端。
@@ -78,7 +81,7 @@ startSleepTimer/stopAfterCurrentSong/cancelSleepTimer/reloadLyrics）。
 事件：`player`（播放状态快照，约 4Hz）、`player.queue`、`player.lyrics`、`player.lyricsLoading`、
 `player.coverSeed`、`theme`、`settings`、`toast`、`library.changed`、`library.scan`、
 `collections.changed`、`history.changed`、`stats.changed`、`accounts.changed`、
-`downloads.changed`、`sync.state`。
+`downloads.changed`、`sync.state`、`comments`/`listenTogether.state` 等（见对应的 `protocol-<domain>.md`）。
 
 数据形状以 `desktop/docs/protocol*.md` 为准（每个 domain 有一份）。Kotlin 模型见
 `desktop/src/main/kotlin/.../core/Models.kt`；能直接 `@Serializable` 编码的模型优先直接用。

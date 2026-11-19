@@ -37,6 +37,9 @@ QtObject {
     function openSleepPanel() { openPanel("sleep") }
     function openDownloadsPanel() { openPanel("downloads") }
     function openLoginPanel(source) { loginSource = source; openPanel("login") }
+    function openCommentsPanel() { openPanel("comments") }
+    function openListenTogetherPanel() { openPanel("listenTogether") }
+    function openYouTubeLoginPanel() { openPanel("youtubeLogin") }
     property string loginSource: ""
 
     function openTab(name) {
@@ -84,6 +87,7 @@ QtObject {
         case "onlineCollection":
         case "localArtist":
         case "remoteArtist":
+        case "albumDetail":
             push(name, arg)
             break
         default:

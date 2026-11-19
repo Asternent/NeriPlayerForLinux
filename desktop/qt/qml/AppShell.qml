@@ -79,8 +79,9 @@ Item {
         return host
     }
 
-    // 播放页沉浸模式：侧边栏隐藏，内容占满宽度
-    readonly property bool immersiveChromeHidden: shell.onNowPlaying && Nav.immersive
+    // 播放页始终隐藏左侧导航栏（播放页是沉浸式布局，导航栏会破坏版面）；
+    // 沉浸模式额外把窗口拉全屏，见 Nav.immersive。
+    readonly property bool navHidden: shell.onNowPlaying
 
     NavigationBar {
         id: navBar
@@ -88,8 +89,8 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         // 沉浸时完全隐藏
-        opacity: shell.immersiveChromeHidden ? 0 : 1
-        x: shell.immersiveChromeHidden ? -width : 0
+        opacity: shell.navHidden ? 0 : 1
+        x: shell.navHidden ? -width : 0
         visible: opacity > 0.01
 
         Behavior on opacity {
@@ -102,7 +103,7 @@ Item {
 
     Item {
         id: contentArea
-        anchors.left: shell.immersiveChromeHidden ? parent.left : navBar.right
+        anchors.left: shell.navHidden ? parent.left : navBar.right
         anchors.right: parent.right
         anchors.top: parent.top
         // 播放页自带完整控制区，不需要底部迷你条，内容延伸到底部
@@ -222,6 +223,8 @@ Item {
             return "pages/OnlineCollectionPage.qml"
         case "remoteArtist":
             return "pages/RemoteArtistPage.qml"
+        case "albumDetail":
+            return "pages/AlbumDetailPage.qml"
         default:
             return "pages/HomePage.qml"
         }

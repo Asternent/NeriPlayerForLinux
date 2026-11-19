@@ -4,7 +4,7 @@
 #   tools/dev.sh backend            构建并启动无头后端（测试用 XDG 目录，默认 /tmp/neri-dev）
 #   tools/dev.sh stop               停止测试后端
 #   tools/dev.sh build              编译 C++ 程序
-#   tools/dev.sh screenshot out.png [--page home] [--wait 2500] [--size 1180x820]
+#   tools/dev.sh screenshot out.png [--page home] [--arg '<json>'] [--panel queue] [--wait 2500] [--size 1180x820]
 #   tools/dev.sh app                在真实桌面上启动应用（会顺带拉起后端）
 #   tools/dev.sh clean              删除测试数据目录
 #
