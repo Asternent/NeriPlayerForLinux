@@ -1,6 +1,8 @@
 #include "backendclient.h"
 #include "singleinstance.h"
 #include "systemtheme.h"
+#include "windowdrag.h"
+#include "layershellhelper.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -166,9 +168,13 @@ int main(int argc, char *argv[])
 
     BackendClient backend;
     SystemTheme systemTheme;
+    WindowDrag windowDrag;
+    LayerShellHelper layerShell;
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("Backend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("SystemTheme"), &systemTheme);
+    engine.rootContext()->setContextProperty(QStringLiteral("WindowDrag"), &windowDrag);
+    engine.rootContext()->setContextProperty(QStringLiteral("LayerShell"), &layerShell);
 
     // 全局对象用 *Global.qml 命名：如果文件就叫 Player.qml，同一目录的隐式导入会让 "Player"
     // 解析成 QML 类型而不是 context property（表现为跨对象调用 TypeError）。

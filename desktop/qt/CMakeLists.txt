@@ -8,6 +8,9 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick Qml Network Svg DBus)
 
+# LayerShellQt 用于 Wayland 下悬浮窗口的置顶与定位；缺失时自动回退到普通窗口。
+find_package(LayerShellQt QUIET)
+
 qt_standard_project_setup()
 
 set(NERIPLAYER_SOURCES
@@ -16,11 +19,23 @@ set(NERIPLAYER_SOURCES
     src/backendclient.cpp
     src/systemtheme.h
     src/systemtheme.cpp
+    src/windowdrag.h
+    src/windowdrag.cpp
+    src/layershellhelper.h
+    src/layershellhelper.cpp
     src/singleinstance.h
     src/singleinstance.cpp
 )
 
 qt_add_executable(neriplayer ${NERIPLAYER_SOURCES})
+
+if(TARGET LayerShellQt::Interface)
+    target_link_libraries(neriplayer PRIVATE LayerShellQt::Interface)
+    target_compile_definitions(neriplayer PRIVATE NERIPLAYER_HAVE_LAYERSHELLQT=1)
+    message(STATUS "LayerShellQt found: Wayland floating windows use layer-shell")
+else()
+    message(STATUS "LayerShellQt not found: floating windows fall back to plain windows")
+endif()
 
 target_link_libraries(neriplayer PRIVATE
     Qt6::Core

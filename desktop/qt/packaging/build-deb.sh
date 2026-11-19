@@ -78,6 +78,7 @@ Description: NeriPlayer 音理音理 — 多源在线 / 本地音乐播放器（
  支持网易云 / 哔哩哔哩 / 本地媒体库、歌词、悬浮歌词、GitHub 跨设备同步、
  托盘常驻与 MPRIS 系统媒体控制。
 Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6qml6 | libqt6qml6t64,
+ liblayershellqtinterface6, layer-shell-qt,
  libqt6quick6 | libqt6quick6t64, libqt6network6 | libqt6network6t64, libqt6svg6, libqt6dbus6,
  qml6-module-qtquick, qml6-module-qtquick-window, qml6-module-qtquick-controls,
  qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-dialogs,

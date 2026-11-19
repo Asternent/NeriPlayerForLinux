@@ -32,7 +32,31 @@ ApplicationWindow {
     /** 退出应用（托盘菜单、快捷键）。 */
     function quitApp() {
         root.forceQuit = true
+        destroyAuxWindows()
         root.close()
+        // 悬浮歌词/托盘面板是用 createObject(null) 独立创建的顶层窗口，
+        // 它们不属于 ApplicationWindow 的子对象，root.close() 不会带走它们，
+        // 导致「窗口都关了、进程还在」。这里显式销毁并退出事件循环。
+        Qt.quit()
+    }
+
+    /** 销毁独立创建的辅助窗口（退出前调用）。 */
+    function destroyAuxWindows() {
+        if (root.floatingLyrics) {
+            root.floatingLyrics.close()
+            root.floatingLyrics.destroy()
+            root.floatingLyrics = null
+        }
+        if (root.floatingPreview) {
+            root.floatingPreview.close()
+            root.floatingPreview.destroy()
+            root.floatingPreview = null
+        }
+        if (root.trayPanel) {
+            root.trayPanel.close()
+            root.trayPanel.destroy()
+            root.trayPanel = null
+        }
     }
 
     onClosing: function(close) {
@@ -42,7 +66,12 @@ ApplicationWindow {
             close.accepted = false
             root.hide()
             Toast.show("已最小化到托盘，音乐继续播放")
+            return
         }
+        // 真的要退出：先把独立创建的辅助窗口一并销毁，否则主窗口关了、
+        // 进程会因为悬浮歌词/托盘面板还活着而不退出。
+        root.destroyAuxWindows()
+        Qt.quit()
     }
 
     /** 供快捷键 / 截图脚本 / 托盘调用的命名路由入口。 */
@@ -207,16 +236,39 @@ ApplicationWindow {
         anchors.fill: parent
     }
 
-    // 悬浮歌词独立窗口（无边框置顶，样式跟随设置）
-    FloatingLyricsWindow {
-        id: floatingLyrics
-        mainWindow: root
-    }
+    // 悬浮歌词 / 托盘面板不在这里以子对象声明：作为 ApplicationWindow 的子 Window 会带上
+    // transient parent，主窗口隐藏到托盘时被连带隐藏（面板就弹不出来了）。
+    // 改为在 Component.onCompleted 里用 createObject(null) 创建，得到真正独立的顶层窗口。
+    property var floatingLyrics: null
+    property var trayPanel: null
+    property var floatingPreview: null
 
-    // 托盘控制面板（无边框小窗，失焦自动收起）
-    TrayControlPanel {
-        id: trayPanel
-        mainWindow: root
+    // 快捷方式：QML 里其它地方仍按 trayPanel.showPanel() 那样用
+    function ensureAuxWindows() {
+        if (!root.floatingLyrics) {
+            const lyricsComponent = Qt.createComponent("FloatingLyricsWindow.qml")
+            if (lyricsComponent.status === Component.Ready)
+                root.floatingLyrics = lyricsComponent.createObject(null, { "mainWindow": root })
+            else
+                console.warn("[app] FloatingLyricsWindow.qml:", lyricsComponent.errorString())
+        }
+        if (!root.floatingPreview) {
+            const previewComponent = Qt.createComponent("FloatingLyricsDragPreview.qml")
+            if (previewComponent.status === Component.Ready)
+                root.floatingPreview = previewComponent.createObject(null)
+            else
+                console.warn("[app] FloatingLyricsDragPreview.qml:", previewComponent.errorString())
+        }
+        // 把预览层注入悬浮歌词窗口
+        if (root.floatingLyrics && root.floatingPreview)
+            root.floatingLyrics.previewWindow = root.floatingPreview
+        if (!root.trayPanel) {
+            const panelComponent = Qt.createComponent("TrayControlPanel.qml")
+            if (panelComponent.status === Component.Ready)
+                root.trayPanel = panelComponent.createObject(null, { "mainWindow": root })
+            else
+                console.warn("[app] TrayControlPanel.qml:", panelComponent.errorString())
+        }
     }
 
     // 焦点被关闭的弹窗/输入框释放后，把键盘焦点还给快捷键处理器
