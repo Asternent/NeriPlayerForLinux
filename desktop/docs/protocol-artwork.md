@@ -22,6 +22,7 @@
 | `artwork.resolve` | `{url, referer?}` | `{path:string, cached:bool}` 或 `{path:null, error}` | 通用 URL → 本地缓存路径 |
 | `artwork.forSong` | `{song:Song, referer?}` | `{path:string, cached:bool}` 或 `{path:null, error}` | 歌曲封面优先本地、其次远程 |
 | `artwork.clearCache` | — | `{removed:int}` | 清空远程封面缓存目录 |
+| `artwork.saveAs` | `{url?, path?, target, referer?}` | `{ok:bool, path:string|null, error?}` | 另存封面到用户选择的路径（播放页封面右键菜单） |
 
 ## 2. `artwork.resolve`
 
@@ -96,7 +97,38 @@
 - 设置页「清除封面缓存」按钮调它即可；清理不会广播事件，前端自行刷新。
 - 并发下载锁也会一并重置。
 
-## 5. QML 使用示例
+## 5. `artwork.saveAs`
+
+把一张封面另存到用户指定的绝对路径（播放页封面右键「保存封面…」，前端用 `FileDialog` 选路径）。
+
+```jsonc
+// 请求：path（后端已缓存的本地封面）优先，url 作为兜底
+{"path": "/home/me/.cache/NeriPlayer/covers/2c225e0d....img", "target": "/home/me/图片/封面 - 十年.jpg"}
+// 只有远程地址时后端会先下载到缓存再复制
+{"url": "https://p3.music.126.net/xxx.jpg", "target": "/home/me/图片/cover.jpg"}
+// 成功
+{"ok": true, "path": "/home/me/图片/封面 - 十年.jpg"}
+// 失败（命令本身仍成功返回）
+{"ok": false, "path": null, "error": "本地封面文件不存在或为空: ..."}
+```
+
+行为：
+
+| 输入 | 行为 |
+| --- | --- |
+| `path` 是存在的本地文件 | 直接复制该文件到 `target` |
+| `path` 不存在 / 为空，且给了 `url` | 按 `artwork.resolve` 的规则下载到缓存后复制 |
+| `path` / `url` 都缺 | 返回 `{ok:false, error:"缺少 url 或 path"}` |
+| `target` 缺失 | 协议错误 `bad_request`（缺少 target） |
+| `target` 非绝对路径 / 是目录 | `{ok:false, error}` |
+| `target` 后缀不是图片后缀 | 按内容嗅探补后缀（如 `.img` → `.jpg`），结果 `path` 是最终路径 |
+| `target` 已存在 | 覆盖写入 |
+
+- 目标目录不存在时会自动创建，父目录不可写时返回 `{ok:false, error}`。
+- 与其它 artwork 命令一致：预期的失败不抛协议错误，前端用 Toast 展示 `error` 即可。
+- 不做格式转换，直接按字节复制（缓存文件本身已是原始图片内容，只是没有扩展名）。
+
+## 6. QML 使用示例
 
 ```qml
 // 通用 URL 封面（歌单 / 歌手头像 / 搜索结果）
@@ -116,6 +148,18 @@ CoverArt { path: coverPath; radius: 12 }
 
 // 清缓存（设置页）
 Api.call("artwork.clearCache").then(r => Toast.show("已清理 " + r.removed + " 张封面"))
+
+// 播放页封面右键「保存封面…」：FileDialog 选完路径后调用
+function saveArtwork(targetPath) {
+    Api.call("artwork.saveAs", {
+        path: song.artworkPath || "",     // 本地内嵌封面（可能为空）
+        url: song.artworkUrl || "",       // 远程封面兜底
+        target: targetPath
+    }).then(r => {
+        if (r.ok) Toast.show("封面已保存：" + r.path)
+        else Toast.show(r.error || "封面保存失败", "error")
+    }).catch(e => Toast.show(e.message || "封面保存失败", "error"))
+}
 ```
 
 - 路径是**后端所在机器**的绝对路径；Qt 与后端同机时 QML `Image { source: "file://" + path }`
@@ -123,7 +167,7 @@ Api.call("artwork.clearCache").then(r => Toast.show("已清理 " + r.removed + "
 - 建议前端做一层内存/`map<url,path>` 缓存，避免同一张图在列表滚动时反复发 IPC；
   后端虽然会命中磁盘缓存立即返回，但仍有一次 IPC 开销。
 
-## 6. 缓存目录布局
+## 7. 缓存目录布局
 
 ```
 $XDG_CACHE_HOME/NeriPlayer/
@@ -139,7 +183,7 @@ $XDG_CACHE_HOME/NeriPlayer/
 - 缓存没有容量上限/过期策略（与原核心一致），目前靠设置页手动清理；后续如需自动淘汰，
   可在 `ArtworkApi` 内按文件 mtime 实现，不影响协议。
 
-## 7. 已知限制
+## 8. 已知限制
 
 - 不支持需要登录 Cookie 才能访问的私密图片（如部分 B 站收藏夹封面）；这类 URL 下载会失败并返回 `error`。
 - 一次调用只下载一张图；批量封面请由前端并发调用（`Api.call` 天然支持并发），后端会按 URL 去重。
