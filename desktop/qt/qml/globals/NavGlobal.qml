@@ -22,13 +22,10 @@ QtObject {
 
     readonly property bool canGoBack: stack.length > 1
 
-    /** 播放页沉浸模式：隐藏侧边栏与顶栏，只留内容；鼠标移动时短暂显示控件。 */
+    /** 播放页沉浸模式：进入全屏，隐藏侧边栏，顶栏（返回按钮与标题）淡出。 */
     property bool immersive: false
-    /** 沉浸模式下鼠标最近移动过、chrome 暂时可见。 */
-    property bool chromeRevealed: false
-    function setImmersive(on) { immersive = on; if (!on) chromeRevealed = false }
-    function toggleImmersive() { setImmersive(!immersive) }
-    function revealChrome() { chromeRevealed = true }
+    function setImmersive(on) { immersive = on }
+    function toggleImmersive() { immersive = !immersive }
 
     // ---- 主窗口内的浮层面板（队列/音量/音效/睡眠/下载/登录）----
     property string activePanel: ""

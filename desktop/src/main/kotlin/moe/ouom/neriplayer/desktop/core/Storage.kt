@@ -98,6 +98,12 @@ data class AppSettings(
     val equalizerBands: List<Float> = List(10) { 0f },
     val lyricsFontScale: Float = 1.0f,
     val showLyricTranslation: Boolean = true,
+    /** 播放页歌词水平对齐：LEFT / CENTER / RIGHT。 */
+    val lyricsAlignment: String = "LEFT",
+    /** 歌词高亮方式：LINE=整句亮起，WORD=逐字亮起。 */
+    val lyricsHighlight: String = "LINE",
+    /** 当前歌词高亮动画时长（毫秒）。 */
+    val lyricsHighlightDuration: Int = 220,
     val coverShowsLyrics: Boolean = true,
     val showNowPlayingTitle: Boolean = true,
     val songTitleMarquee: Boolean = true,

@@ -47,14 +47,12 @@ Item {
         height: 64
 
         // 沉浸模式下与侧栏一起淡出，鼠标移动时由 AppShell 短暂唤回
-        opacity: (Nav.immersive && !immersiveRevealed) ? 0 : 1
+        opacity: Nav.immersive ? 0 : 1
         visible: opacity > 0.01
         z: 2
         Behavior on opacity {
             NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
         }
-
-        readonly property bool immersiveRevealed: Nav.chromeRevealed
 
         IconButton {
             id: backButton
@@ -94,23 +92,47 @@ Item {
             }
         }
 
-        // 沉浸模式开关：隐藏侧栏与顶栏，鼠标移动时短暂显示；Esc 退出
-        IconButton {
-            anchors.right: parent.right
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            icon: Nav.immersive ? "fullscreen_exit" : "fullscreen"
-            iconSize: 22
-            size: 44
-            tooltip: Nav.immersive ? "退出沉浸模式 (Esc)" : "沉浸模式"
-            onClicked: Nav.toggleImmersive()
+    } // topBar 结束
+
+    /**
+     * 沉浸模式：进入真正的全屏、隐藏侧边栏，顶栏（返回按钮与标题）保持淡出。
+     * 按钮放在页面根层（不在 topBar 内），这样沉浸时仍可点击退出；
+     * Esc 同样可以退出。
+     */
+    function toggleImmersive() {
+        Nav.setImmersive(!Nav.immersive)
+        const w = page.Window.window
+        if (!w)
+            return
+        if (Nav.immersive)
+            w.showFullScreen()
+        else
+            w.showNormal()
+    }
+
+    IconButton {
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.top: parent.top
+        anchors.topMargin: 10
+        z: 5
+        icon: Nav.immersive ? "fullscreen_exit" : "fullscreen"
+        iconSize: 22
+        size: 44
+        // 沉浸时稍微透明，仍然可见可点
+        opacity: Nav.immersive ? 0.5 : 1
+        tooltip: Nav.immersive ? "退出全屏沉浸 (Esc)" : "全屏沉浸模式"
+        onClicked: page.toggleImmersive()
+
+        Behavior on opacity {
+            NumberAnimation { duration: 180 }
         }
     }
 
-    // Esc 退出沉浸模式（优先于其它快捷键）
+    // Esc 退出沉浸模式
     Keys.onEscapePressed: function(event) {
         if (Nav.immersive) {
-            Nav.setImmersive(false)
+            page.toggleImmersive()
             event.accepted = true
         }
     }
@@ -184,7 +206,8 @@ Item {
                 anchors.topMargin: 8
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 16
-                width: 420
+                // 全屏沉浸时歌词区更宽，字号也更大（见 LyricsPane.immersive）
+                width: Nav.immersive ? Math.min(720, parent.width * 0.5) : 420
 
                 Rectangle {
                     anchors.left: parent.left
@@ -199,6 +222,7 @@ Item {
                     anchors.leftMargin: 24
                     horizontalPadding: 8
                     verticalPadding: 16
+                    immersive: Nav.immersive
                 }
             }
         }

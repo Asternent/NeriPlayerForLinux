@@ -1420,6 +1420,45 @@ Item {
                     externalValue: Number(page.sv("lyricsFontScale", 1.0))
                     onCommitted: function(value) { page.setSetting("lyricsFontScale", value) }
                 }
+
+                SettingsLabel {
+                    width: parent.width
+                    text: "歌词对齐"
+                }
+                SegmentedOptions {
+                    width: parent.width
+                    options: [
+                        { value: "LEFT", label: "左对齐" },
+                        { value: "CENTER", label: "居中" },
+                        { value: "RIGHT", label: "右对齐" }
+                    ]
+                    value: page.sv("lyricsAlignment", "LEFT")
+                    onSelected: function(value) { page.setSetting("lyricsAlignment", value) }
+                }
+
+                SettingsLabel {
+                    width: parent.width
+                    text: "歌词高亮方式"
+                }
+                SegmentedOptions {
+                    width: parent.width
+                    options: [
+                        { value: "LINE", label: "整句亮起" },
+                        { value: "WORD", label: "逐字亮起" }
+                    ]
+                    value: page.sv("lyricsHighlight", "LINE")
+                    onSelected: function(value) { page.setSetting("lyricsHighlight", value) }
+                }
+
+                SliderRow {
+                    width: parent.width
+                    label: "高亮动画时长 " + Math.round(page.sv("lyricsHighlightDuration", 220)) + "ms"
+                    from: 0
+                    to: 800
+                    decimals: 0
+                    externalValue: Number(page.sv("lyricsHighlightDuration", 220))
+                    onCommitted: function(value) { page.setSetting("lyricsHighlightDuration", Math.round(value)) }
+                }
             }
 
             // ============================================================ 首页栏目

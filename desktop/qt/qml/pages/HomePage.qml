@@ -40,6 +40,7 @@ Item {
             return
         }
         refreshing = true
+        refreshStartedAt = Date.now()
         if (!loadedOnce)
             loading = true
         loadError = ""
@@ -61,10 +62,23 @@ Item {
         })
     }
 
+    /** 刷新开始时间，用于保证指示器至少显示一小段时间。 */
+    property real refreshStartedAt: 0
+
     function finishLoad() {
         loading = false
-        refreshing = false
         loadedOnce = true
+        const elapsed = Date.now() - refreshStartedAt
+        const remain = Math.max(0, 900 - elapsed)
+        if (remain > 0)
+            refreshDoneTimer.start(remain)
+        else
+            refreshing = false
+    }
+
+    property Timer refreshDoneTimer: Timer {
+        repeat: false
+        onTriggered: page.refreshing = false
     }
 
     function refreshContinuePlaying() {
@@ -413,32 +427,62 @@ Item {
         property real pullDistance: Math.max(0, -verticalOvershoot)
         readonly property bool pullReady: pullDistance >= 64
 
-        onMovementEnded: {
+        // 关键：必须在 dragEnded（松手瞬间）判断，不能用 movementEnded——
+        // 后者在回弹动画结束后才触发，那时 verticalOvershoot 已归零，永远刷新不了。
+        onDragEnded: {
             if (pullReady && !page.refreshing)
                 page.reload()
         }
 
+        // 下拉指示器：拖动时跟随下拉距离旋转；松手触发刷新后保持显示，
+        // 用持续的旋转动画表达「正在刷新」，直到加载完成才淡出。
         Rectangle {
+            id: refreshIndicator
             z: 2
             anchors.horizontalCenter: parent.horizontalCenter
-            y: -48
+            // 拖动时浮在内容上沿（y=-48），回弹后固定在顶部可见位置
+            y: page.refreshing ? 12 : -48
             width: 32
             height: 32
             radius: 16
             color: Theme.primary
-            opacity: Math.min(1, scroll.pullDistance / 48)
-            visible: opacity > 0
+            opacity: page.refreshing ? 1 : Math.min(1, scroll.pullDistance / 48)
+            visible: opacity > 0.01
+
+            Behavior on y {
+                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            }
+            Behavior on opacity {
+                NumberAnimation { duration: 180 }
+            }
 
             NeriIcon {
+                id: refreshIcon
                 anchors.centerIn: parent
                 name: "refresh"
                 iconSize: 18
                 color: Theme.onPrimaryColor
-                rotation: scroll.pullDistance * 3
+                // 拖动阶段角度随下拉距离；刷新阶段由 refreshSpin 直接接管 rotation
+                rotation: page.refreshing ? 0 : scroll.pullDistance * 3
 
                 Behavior on rotation {
+                    enabled: !page.refreshing
                     NumberAnimation { duration: 80 }
                 }
+            }
+
+            // 刷新中的持续旋转（约 1 秒一圈）。
+            // 用 RotationAnimation 直接改 rotation 属性（此时绑定已被 refreshing 固定为 0，
+            // 动画结束后不会跳回，因为刷新结束时组件会淡出）。
+            RotationAnimation {
+                id: refreshSpin
+                target: refreshIcon
+                property: "rotation"
+                from: 0
+                to: 360
+                duration: 1000
+                loops: Animation.Infinite
+                running: page.refreshing
             }
         }
 

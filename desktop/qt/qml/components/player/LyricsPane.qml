@@ -16,9 +16,42 @@ Item {
     readonly property bool showTranslation: Settings.get("showLyricTranslation", true) !== false
     readonly property bool loading: Player.lyricsLoading
 
+    /** 水平对齐：LEFT / CENTER / RIGHT */
+    readonly property string alignment: {
+        const a = Settings.get("lyricsAlignment", "LEFT")
+        return (a === "CENTER" || a === "RIGHT") ? a : "LEFT"
+    }
+    /** 高亮方式：LINE 整句 / WORD 逐字 */
+    readonly property bool wordHighlight: Settings.get("lyricsHighlight", "LINE") === "WORD"
+    /** 高亮动画时长（ms） */
+    readonly property int highlightDuration: {
+        const d = Settings.get("lyricsHighlightDuration", 220)
+        return (typeof d === "number" && d >= 0) ? d : 220
+    }
+    /** 当前行已播放的比例（用于逐字高亮，按字符数均分行时长） */
+    readonly property real lineProgress: {
+        if (!wordHighlight || currentIndex < 0 || currentIndex >= lines.length)
+            return 0
+        const line = lines[currentIndex]
+        if (!line)
+            return 0
+        const next = lines[currentIndex + 1]
+        const start = line.timeMs
+        const end = next ? next.timeMs : start + 3000
+        if (end <= start)
+            return 0
+        return Math.max(0, Math.min(1, (Player.positionMs - start) / (end - start)))
+    }
+    /** Text 的水平对齐枚举 */
+    readonly property int textAlign: alignment === "CENTER" ? Text.AlignHCenter
+                                     : (alignment === "RIGHT" ? Text.AlignRight : Text.AlignLeft)
+
     property bool autoScroll: true
     property real horizontalPadding: 24
     property real verticalPadding: 24
+    /** 全屏沉浸模式：字号与行距放大，阅读更舒适。 */
+    property bool immersive: false
+    readonly property real sizeFactor: immersive ? 1.5 : 1.0
 
     function ensureVisible() {
         if (!autoScroll || !visible || lines.length === 0)
@@ -128,18 +161,39 @@ Item {
                     text: lineRow.modelData.text !== "" ? lineRow.modelData.text : "♪"
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
-                    color: lineRow.active ? Theme.primary : Theme.onSurfaceVariantColor
+                    horizontalAlignment: pane.textAlign
+                    // 逐字模式用「已唱部分主色 + 未唱部分浅色」的富文本模拟；
+                    // 整句模式整行一起变色。
+                    color: lineRow.active && !pane.wordHighlight
+                           ? Theme.primary : Theme.onSurfaceVariantColor
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.round(20 * pane.fontScale)
+                    font.pixelSize: Math.round(20 * pane.fontScale * pane.sizeFactor)
                     font.weight: lineRow.active ? Font.Bold : Font.Normal
                     lineHeightMode: Text.FixedHeight
-                    lineHeight: Math.round(28 * pane.fontScale)
+                    lineHeight: Math.round((pane.immersive ? 44 : 28) * pane.fontScale)
 
                     Behavior on color {
-                        ColorAnimation {
-                            duration: Theme.motionShort
-                        }
+                        ColorAnimation { duration: pane.highlightDuration }
                     }
+                }
+
+                // 逐字高亮覆盖层：只在该行是「当前行」时绘制，按已唱比例裁切出主色文字。
+                Text {
+                    visible: pane.wordHighlight && lineRow.active
+                    text: lineRow.modelData.text
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                    horizontalAlignment: pane.textAlign
+                    color: Theme.primary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Math.round(20 * pane.fontScale * pane.sizeFactor)
+                    font.weight: Font.Bold
+                    lineHeightMode: Text.FixedHeight
+                    lineHeight: Math.round((pane.immersive ? 44 : 28) * pane.fontScale)
+                    // 用水平裁切宽度表现「唱到哪」；多行歌词时按行数近似处理
+                    clip: true
+                    width: Math.max(0, Math.min(parent.width,
+                           parent.width * pane.lineProgress))
                 }
 
                 Text {
@@ -149,13 +203,14 @@ Item {
                     text: lineRow.modelData.translation || ""
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
+                    horizontalAlignment: pane.textAlign
                     color: lineRow.active
                            ? Theme.withAlpha(Theme.primary, 0.8)
                            : Theme.withAlpha(Theme.onSurfaceVariantColor, 0.7)
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.round(15 * pane.fontScale)
+                    font.pixelSize: Math.round(15 * pane.fontScale * pane.sizeFactor)
                     lineHeightMode: Text.FixedHeight
-                    lineHeight: Math.round(21 * pane.fontScale)
+                    lineHeight: Math.round((pane.immersive ? 30 : 21) * pane.fontScale)
                 }
             }
 
