@@ -22,6 +22,10 @@ import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.random.Random
 
+/** 网易云不可播、自动切到哔哩哔哩成功后的提示。 */
+private const val NETEASE_AUTO_SOURCE_FALLBACK_MESSAGE =
+    "网易云音源不可用，已自动切换到哔哩哔哩音源"
+
 data class SleepTimerState(
     val active: Boolean = false,
     val stopAfterCurrent: Boolean = false,
@@ -104,6 +108,9 @@ class PlayerManager(
     private val resolvedCache = ConcurrentHashMap<String, AudioInput>()
     private val seedCache = ConcurrentHashMap<String, String>()
 
+    /** 网易云不可播时的哔哩哔哩兜底：缓存、提示去重与引擎侧失败重试都在内部处理。 */
+    private val neteaseAutoSource = NeteaseAutoSource(online)
+
     val supportsEffects: Boolean get() = engine.supportsEffects
 
     init {
@@ -112,6 +119,7 @@ class PlayerManager(
             _state.value = PlaybackState.ERROR
             _buffering.value = false
             scope.launch { _messages.emit(message) }
+            maybeRetryWithAutoSource()
         }
         engine.setVolume(_volume.value)
         if (engine.supportsEffects) {
@@ -462,22 +470,73 @@ class PlayerManager(
         }
     }
 
+    /**
+     * 解析播放输入。
+     *
+     * 网易云歌曲多一层兜底：直链解析失败（VIP/无权限）或直链在引擎侧播放失败时，
+     * 按设置 neteaseAutoSourceSwitch 到哔哩哔哩搜索同名音频；其它音源保持原有行为。
+     */
     private suspend fun resolveInput(song: Song): AudioInput? = resolveMutex.withLock {
         // 已下载的歌曲优先走本地文件，未联网也能播放
         downloads.fileFor(song.key)?.let { file ->
             return@withLock AudioInput(path = file.absolutePath)
         }
-        resolvedCache[song.key]?.let { cached ->
-            if (song.source == MediaSource.LOCAL) {
-                val path = cached.path
-                if (path != null && File(path).isFile) return@withLock cached
-            } else {
-                return@withLock cached
+        // 引擎侧直链播放失败后会申请一次 B 站回退：本次跳过直链缓存，直接从 B 站音源开始
+        val engineFailureRetry = song.source == MediaSource.NETEASE &&
+            neteaseAutoSource.consumeEngineFailureRetry(song.key)
+        if (!engineFailureRetry) {
+            resolvedCache[song.key]?.let { cached ->
+                if (song.source == MediaSource.LOCAL) {
+                    val path = cached.path
+                    if (path != null && File(path).isFile) return@withLock cached
+                } else {
+                    return@withLock cached
+                }
+            }
+            // 30 分钟内解析过的 B 站音源直接复用，避免每次播放都重新搜索；关闭开关后不再使用
+            if (song.source == MediaSource.NETEASE && settings.current.neteaseAutoSourceSwitch) {
+                neteaseAutoSource.cached(song.key)?.let { return@withLock it }
             }
         }
-        val resolved = online.resolvePlayback(song, settings.current.qualityPreference)
-        if (resolved != null) resolvedCache[song.key] = resolved
-        resolved
+        if (!engineFailureRetry) {
+            val resolved = online.resolvePlayback(song, settings.current.qualityPreference)
+            if (resolved != null) {
+                resolvedCache[song.key] = resolved
+                return@withLock resolved
+            }
+            if (song.source == MediaSource.NETEASE) {
+                println("[fallback] 网易云直链解析失败：${song.displayName()} - ${song.artist}")
+            }
+        }
+        if (song.source != MediaSource.NETEASE || !settings.current.neteaseAutoSourceSwitch) {
+            return@withLock null
+        }
+        val fallback = neteaseAutoSource.resolve(song)
+        if (fallback != null) {
+            if (neteaseAutoSource.takeNotice(song.key)) {
+                _messages.tryEmit(NETEASE_AUTO_SOURCE_FALLBACK_MESSAGE)
+            }
+            return@withLock fallback
+        }
+        if (engineFailureRetry) {
+            // B 站也没找到时把直链再交给引擎试一次，避免一次偶发失败就彻底不播
+            val resolved = online.resolvePlayback(song, settings.current.qualityPreference)
+            if (resolved != null) {
+                resolvedCache[song.key] = resolved
+                return@withLock resolved
+            }
+        }
+        null
+    }
+
+    /** 网易云直链在引擎侧失败（如 403）时，同一首歌最多用 B 站音源重试一次，防止来回切换。 */
+    private fun maybeRetryWithAutoSource() {
+        val song = _currentSong.value ?: return
+        if (song.source != MediaSource.NETEASE) return
+        if (!settings.current.neteaseAutoSourceSwitch) return
+        if (!neteaseAutoSource.requestEngineFailureRetry(song.key)) return
+        println("[fallback] 网易云直链播放失败，尝试哔哩哔哩音源：${song.displayName()}")
+        scope.launch { playCurrent() }
     }
 
     private suspend fun loadLyricsFor(song: Song) {
