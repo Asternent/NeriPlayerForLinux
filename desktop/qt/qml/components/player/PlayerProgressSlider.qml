@@ -13,8 +13,9 @@ Item {
     readonly property bool seekEnabled: Player.durationMs > 0
     readonly property bool hovered: trackMouse.containsMouse
     readonly property bool expanded: hovered || dragging || forceExpanded
+    // 后端进度只有 4Hz，用全局平滑值驱动，进度条才不会一顿一顿
     readonly property real progress: Player.durationMs > 0
-                                     ? Math.max(0, Math.min(1, Player.positionMs / Player.durationMs))
+                                     ? Math.max(0, Math.min(1, Player.smoothPositionMs / Player.durationMs))
                                      : 0
     readonly property real shownRatio: dragging ? dragValue : progress
 
@@ -61,10 +62,11 @@ Item {
     }
 
     // ---- hover / 拖动时的小圆点 ----
+    // 垂直方向跟轨道中心对齐：轨道展开时从 3px 长到 6px，贴底会让圆点看起来偏下。
     Rectangle {
         visible: root.expanded
         x: Math.max(0, Math.min(track.width - width, track.width * root.shownRatio - width / 2))
-        anchors.bottom: parent.bottom
+        anchors.verticalCenter: track.verticalCenter
         width: 12
         height: 12
         radius: 6
@@ -89,14 +91,16 @@ Item {
         border.color: Theme.withAlpha(np.foreground, 0.18)
         x: Math.max(0, Math.min(parent.width - width,
                                 parent.width * root.shownRatio - width / 2))
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 18 + 12
+        // 气泡相对轨道顶部留固定间距，不随轨道粗细变化
+        anchors.bottom: track.top
+        anchors.bottomMargin: 24
 
         Text {
             id: bubbleText
 
             anchors.centerIn: parent
-            text: root.formatTime(root.dragging ? root.dragValue * Player.durationMs : Player.positionMs)
+            text: root.formatTime(root.dragging ? root.dragValue * Player.durationMs
+                                               : Player.smoothPositionMs)
             color: np.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.textStyle("labelMedium").size

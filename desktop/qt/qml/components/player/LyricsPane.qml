@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import ".."
 
 // 播放页歌词栏（Refined Now Playing 风格）：
@@ -45,6 +46,8 @@ Item {
     }
     readonly property bool showTranslation: Settings.get("showLyricTranslation", true) !== false
     readonly property bool wordHighlight: Settings.get("lyricsHighlight", "LINE") === "WORD"
+    /** 当前行柔光；关掉后不再创建模糊效果，省 GPU。 */
+    readonly property bool lyricsGlow: Settings.get("nowPlayingLyricsGlow", true) !== false
     readonly property int highlightDuration: {
         const d = Settings.get("lyricsHighlightDuration", 220)
         return (typeof d === "number" && d >= 0) ? d : 220
@@ -67,7 +70,8 @@ Item {
         const end = next ? next.timeMs : start + 3000
         if (end <= start)
             return 0
-        return Math.max(0, Math.min(1, (Player.positionMs - start) / (end - start)))
+        // 用全局平滑进度，逐字高亮才不会跟着 4Hz 快照一跳一跳
+        return Math.max(0, Math.min(1, (Player.smoothPositionMs - start) / (end - start)))
     }
 
     NowPlayingTheme { id: np }
@@ -196,8 +200,48 @@ Item {
                 Item {
                     id: mainLine
 
+                    readonly property real glowPad: Math.round(pane.mainFontSize * 0.9)
+
                     width: parent.width
                     height: mainText.implicitHeight
+
+                    // 当前行柔光：把同一行文字用强调色画一份再模糊，仅当前行参与渲染。
+                    Item {
+                        id: glowSource
+
+                        x: -mainLine.glowPad
+                        y: -mainLine.glowPad
+                        width: mainLine.width + mainLine.glowPad * 2
+                        height: mainLine.height + mainLine.glowPad * 2
+                        visible: false
+
+                        Text {
+                            x: mainLine.glowPad
+                            y: mainLine.glowPad
+                            width: mainLine.width
+                            text: lineDelegate.modelData.text !== "" ? lineDelegate.modelData.text : "♪"
+                            wrapMode: Text.Wrap
+                            textFormat: Text.PlainText
+                            color: np.accent
+                            font.family: Theme.fontFamily
+                            font.pixelSize: pane.mainFontSize
+                            font.weight: Font.DemiBold
+                            lineHeightMode: Text.FixedHeight
+                            lineHeight: pane.mainLineHeight
+                        }
+                    }
+
+                    MultiEffect {
+                        anchors.fill: glowSource
+                        visible: pane.lyricsGlow && lineDelegate.active
+                        source: glowSource
+                        // 关掉自动 padding，避免效果项缩放整行文字（这里已经手动留了边）
+                        autoPaddingEnabled: false
+                        blurEnabled: true
+                        blur: 0.7
+                        blurMax: 22
+                        opacity: 0.6
+                    }
 
                     Text {
                         id: mainText

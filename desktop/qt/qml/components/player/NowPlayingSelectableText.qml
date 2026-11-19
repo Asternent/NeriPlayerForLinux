@@ -20,12 +20,16 @@ Item {
     property int maximumLines: 0
     /** 可跳转入口（歌手 / 专辑）悬停时的下划线提示。 */
     property bool underlined: false
+    /** 水平对齐（跟随设置里的信息对齐方式）。 */
+    property int horizontalAlignment: Text.AlignLeft
 
     signal activity()
 
     NowPlayingTheme { id: np }
 
     readonly property bool hasSelection: editor.selectedText !== ""
+    /** 文字本身的自然宽度（不换行时用于按内容宽度排版，例如居中/右对齐的信息行）。 */
+    readonly property real naturalWidth: metrics.advanceWidth(String(root.text))
 
     Behavior on color {
         ColorAnimation { duration: Theme.motionShort }
@@ -66,6 +70,7 @@ Item {
         font.pixelSize: root.fontPixelSize
         font.weight: root.fontWeight
         font.underline: root.underlined
+        horizontalAlignment: root.horizontalAlignment
         cursorVisible: false
         // 按下取焦点：选中文字后 Ctrl+C 需要编辑器本身有焦点
         activeFocusOnPress: true

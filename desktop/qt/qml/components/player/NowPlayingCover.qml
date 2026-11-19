@@ -25,6 +25,10 @@ Item {
         return Math.round(coverSize * 0.082)
     }
 
+    /** 圆形封面才允许旋转（方形/圆角旋转会露出角上的空白）。 */
+    readonly property bool rotationEnabled: shape === "CIRCLE"
+                                            && Settings.get("nowPlayingCoverRotate", false) === true
+
     implicitWidth: coverSize
     implicitHeight: coverSize
 
@@ -79,16 +83,79 @@ Item {
         }
     }
 
-    CoverArt {
-        id: cover
+    // ---- 封面（旋转只作用在这一层，光晕/阴影/缓冲遮罩保持静止） ----
+    Item {
+        id: coverSpin
 
         anchors.fill: parent
-        radius: root.shapeRadius
-        placeholderIconSize: Math.max(28, root.coverSize * 0.22)
-        path: Player.song && Player.song.artworkPath ? Player.song.artworkPath : ""
-        url: Player.song && Player.song.artworkUrl ? Player.song.artworkUrl : ""
+        rotation: 0
 
+        CoverArt {
+            id: cover
+
+            anchors.fill: parent
+            radius: root.shapeRadius
+            placeholderIconSize: Math.max(28, root.coverSize * 0.22)
+            path: Player.song && Player.song.artworkPath ? Player.song.artworkPath : ""
+            url: Player.song && Player.song.artworkUrl ? Player.song.artworkUrl : ""
+        }
     }
+
+    // 20 秒一圈的线性旋转；暂停时停在当前角度，切歌回到 0 度。
+    NumberAnimation {
+        id: spinAnimation
+
+        target: coverSpin
+        property: "rotation"
+        duration: 20000
+        loops: Animation.Infinite
+        easing.type: Easing.Linear
+    }
+
+    function restartSpin() {
+        spinAnimation.stop()
+        coverSpin.rotation = 0
+        updateSpin()
+    }
+
+    function updateSpin() {
+        if (!rotationEnabled) {
+            spinAnimation.stop()
+            coverSpin.rotation = 0
+            return
+        }
+        if (!Player.playing || spinAnimation.running)
+            return
+        // 从当前角度接着转：暂停/恢复时不会跳回 0 度
+        spinAnimation.from = coverSpin.rotation
+        spinAnimation.to = coverSpin.rotation + 360
+        spinAnimation.start()
+    }
+
+    property string _lastSongKey: ""
+
+    function handlePlayerSong() {
+        const key = Player.song && Player.song.key ? String(Player.song.key) : ""
+        if (key === _lastSongKey)
+            return
+        _lastSongKey = key
+        restartSpin()
+    }
+
+    Connections {
+        target: Player
+
+        function onSongChanged() {
+            root.handlePlayerSong()
+        }
+
+        function onPlayingChanged() {
+            root.updateSpin()
+        }
+    }
+
+    onRotationEnabledChanged: restartSpin()
+    Component.onCompleted: restartSpin()
 
     // ---- 缓冲/准备中的半透明遮罩 ----
     Rectangle {

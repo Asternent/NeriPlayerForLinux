@@ -45,6 +45,12 @@ Item {
     readonly property real expandedProgressY: compact ? 20 : 24
     readonly property real expandedTimeY: compact ? 6 : 8
 
+    /**
+     * 页面按「展开后」的高度固定预留底部空间：
+     * hover 只在控制条内部展开，歌曲信息/歌词区不会再被顶着上移。
+     */
+    readonly property real reservedHeight: expandedHeight
+
     height: collapsedHeight + expandAmount * (expandedHeight - collapsedHeight)
     opacity: controlsVisible ? 1 : 0
     enabled: controlsVisible
@@ -73,7 +79,8 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: parent.height + 40
+        // 高度按预留区算而不是自身高度：展开动画不会再让压暗层跟着长高
+        height: root.reservedHeight + 40
         z: -1
         gradient: Gradient {
             GradientStop { position: 0.0; color: Theme.withAlpha(np.scrim, 0.0) }
@@ -124,7 +131,7 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: root.sideMargin
             anchors.top: parent.top
-            text: root.formatTime(Player.positionMs)
+            text: root.formatTime(Player.smoothPositionMs)
             color: np.foregroundDim
             font.family: Theme.fontFamily
             font.pixelSize: Theme.textStyle("labelMedium").size
@@ -177,7 +184,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             opacity: Math.max(0, 1 - root.expandAmount * 2)
             visible: opacity > 0.01
-            text: root.formatTime(Player.positionMs) + " / " + root.formatTime(Player.durationMs)
+            text: root.formatTime(Player.smoothPositionMs) + " / " + root.formatTime(Player.durationMs)
             color: np.foregroundFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.textStyle("labelMedium").size

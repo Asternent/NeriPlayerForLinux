@@ -6,6 +6,8 @@ import ".."
 //
 // 文字是可选中的（右键菜单可复制歌手 / 专辑）；跳转详情改由左侧小图标触发，
 // 否则鼠标按下会被可选中文字吃掉，无法同时支持「拖选复制」和「单击跳转」。
+// alignment 跟随播放页设置：LEFT 时图标贴左、文字填满剩余宽度；
+// CENTER / RIGHT 时「图标 + 文字」作为一个整体居中 / 靠右，文字按内容宽度排版。
 Item {
     id: row
 
@@ -17,6 +19,8 @@ Item {
     property color hoverColor: np.foreground
     property real fontPixelSize: 15
     property real iconSize: 17
+    /** LEFT / CENTER / RIGHT */
+    property string alignment: "LEFT"
 
     NowPlayingTheme { id: np }
 
@@ -24,6 +28,12 @@ Item {
     signal activity()
 
     readonly property bool hovered: rowHover.hovered
+    readonly property int alignmentMode: alignment === "CENTER" ? 1 : (alignment === "RIGHT" ? 2 : 0)
+    readonly property real gap: Theme.spacingSm
+    readonly property real maxTextWidth: Math.max(0, row.width - iconBox.width - gap)
+    readonly property real textWidth: alignmentMode === 0
+                                        ? maxTextWidth
+                                        : Math.min(textItem.naturalWidth, maxTextWidth)
 
     width: parent ? parent.width : 0
     implicitHeight: Math.max(textItem.implicitHeight, row.iconSize) + 6
@@ -35,7 +45,11 @@ Item {
 
         width: row.iconSize
         height: Math.max(row.iconSize, textItem.implicitHeight)
-        anchors.verticalCenter: parent.verticalCenter
+        y: (row.height - height) / 2
+        // 非左对齐时图标跟随文字整体移动
+        x: row.alignmentMode === 0 ? 0
+           : row.alignmentMode === 1 ? (row.width - row.gap - row.textWidth - width) / 2
+                                     : row.width - row.gap - row.textWidth - width
 
         NeriIcon {
             anchors.centerIn: parent
@@ -68,15 +82,18 @@ Item {
     NowPlayingSelectableText {
         id: textItem
 
-        anchors.left: iconBox.right
-        anchors.right: parent.right
-        anchors.leftMargin: Theme.spacingSm
+        x: row.alignmentMode === 0 ? iconBox.width + row.gap
+                                   : iconBox.x + iconBox.width + row.gap
+        width: row.textWidth
         anchors.verticalCenter: parent.verticalCenter
         text: row.text
         color: row.clickable && row.hovered ? row.hoverColor : row.textColor
         fontPixelSize: row.fontPixelSize
         wrap: false
         underlined: row.clickable && row.hovered
+        horizontalAlignment: row.alignmentMode === 1 ? Text.AlignHCenter
+                                                     : (row.alignmentMode === 2 ? Text.AlignRight
+                                                                                : Text.AlignLeft)
         onActivity: row.activity()
     }
 

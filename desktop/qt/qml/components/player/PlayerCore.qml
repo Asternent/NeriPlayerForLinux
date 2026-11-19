@@ -12,6 +12,12 @@ Item {
     property real contentPadding: 0
     /** 窄屏横排：封面在左，文字在右。 */
     property bool compact: false
+    /** 歌曲信息水平对齐（Settings.nowPlayingInfoAlignment）：LEFT / CENTER / RIGHT。 */
+    property string alignment: "LEFT"
+
+    readonly property int alignmentMode: alignment === "CENTER" ? 1 : (alignment === "RIGHT" ? 2 : 0)
+    readonly property int textAlignment: alignmentMode === 1 ? Text.AlignHCenter
+                                          : (alignmentMode === 2 ? Text.AlignRight : Text.AlignLeft)
 
     signal activity()
 
@@ -77,13 +83,14 @@ Item {
             width: parent.width
             spacing: 0
 
-            // 封面左对齐，与下方文字左边缘对齐（参考图排版）
+            // 封面跟随信息对齐方式：LEFT 贴左（与文字左边缘对齐），CENTER / RIGHT 居中 / 贴右
             Item {
                 width: parent.width
                 height: core.coverSize
 
                 NowPlayingCover {
-                    anchors.left: parent.left
+                    x: core.alignmentMode === 1 ? Math.round((parent.width - width) / 2)
+                       : (core.alignmentMode === 2 ? parent.width - width : 0)
                     width: core.coverSize
                     height: core.coverSize
                     onActivity: core.activity()
@@ -103,6 +110,7 @@ Item {
                 fontWeight: Font.DemiBold
                 wrap: true
                 maximumLines: 2
+                horizontalAlignment: core.textAlignment
                 onActivity: core.activity()
             }
 
@@ -119,6 +127,7 @@ Item {
                 fontPixelSize: Math.round(core.titleSize * 0.55)
                 wrap: true
                 maximumLines: 2
+                horizontalAlignment: core.textAlignment
                 onActivity: core.activity()
             }
 
@@ -129,6 +138,7 @@ Item {
 
             NowPlayingInfoRow {
                 width: parent.width
+                alignment: core.alignment
                 icon: "person"
                 text: core.songArtist
                 clickable: core.artistId !== ""
@@ -140,6 +150,7 @@ Item {
 
             NowPlayingInfoRow {
                 width: parent.width
+                alignment: core.alignment
                 icon: "album"
                 text: core.songAlbum
                 clickable: core.albumId !== ""
@@ -192,6 +203,7 @@ Item {
                     fontWeight: Font.DemiBold
                     wrap: true
                     maximumLines: 2
+                    horizontalAlignment: core.textAlignment
                     onActivity: core.activity()
                 }
 
@@ -202,6 +214,7 @@ Item {
                     color: np.foregroundDim
                     fontPixelSize: 12
                     wrap: false
+                    horizontalAlignment: core.textAlignment
                     onActivity: core.activity()
                 }
 
@@ -212,6 +225,7 @@ Item {
 
                 NowPlayingInfoRow {
                     width: parent.width
+                    alignment: core.alignment
                     icon: "person"
                     text: core.songArtist
                     clickable: core.artistId !== ""
@@ -224,6 +238,7 @@ Item {
 
                 NowPlayingInfoRow {
                     width: parent.width
+                    alignment: core.alignment
                     icon: "album"
                     text: core.songAlbum
                     clickable: core.albumId !== ""

@@ -4,7 +4,7 @@ import "../components"
 import "../components/player"
 
 // 播放页（Refined Now Playing 风格）：
-// 封面模糊全屏背景 + 左封面/信息 + 右滚动双语歌词 + 贴底细进度条与控制条。
+// 封面模糊全屏背景 + 居中「左封面/信息 + 右滚动双语歌词」两栏 + 预留的底部控制区。
 // 沉浸模式下 AppShell 隐藏侧栏与底部迷你播放条；页内不再显示「正在播放」标题栏。
 // 数据与命令全部来自全局 Player，浮层面板由 components/PlayerOverlays.qml 承载。
 Item {
@@ -25,9 +25,11 @@ Item {
     property bool controlsHovered: false
 
     // ---- 尺寸 ----
-    // 信息区 : 歌词区 ≈ 2 : 3：左栏取窗口宽度的 41%，窄窗口下至少 380。
-    // 之前 PlayerCore 内部把文字宽度限制在 360，导致视觉上接近 1 : 4，这里一并去掉。
-    readonly property real wideLeftWidth: Math.max(380, Math.round(width * 0.41))
+    // 内容区两侧统一页边距：页面越宽留白越大，但不超过 56。
+    readonly property real sideMargin: Math.min(56, Math.round(width * 0.05))
+    // 信息区 : 歌词区 ≈ 2 : 3
+    readonly property real wideContentWidth: Math.max(0, width - sideMargin * 2)
+    readonly property real wideLeftWidth: Math.max(320, Math.round(wideContentWidth * 0.4))
     readonly property real wideCoverSize: Math.max(160, Math.min(300,
                                                                Math.min(content.height * 0.52,
                                                                         wideLeftWidth * 0.72)))
@@ -36,7 +38,19 @@ Item {
     readonly property real wideLyricsSize: Math.max(18, Math.min(26, content.height * 0.028))
     readonly property real narrowLyricsSize: Math.max(16, Math.min(21, width * 0.026))
 
+    /** 歌曲信息水平对齐（LEFT / CENTER / RIGHT，默认 LEFT）。 */
+    readonly property string infoAlignment: {
+        const value = Settings.get("nowPlayingInfoAlignment", "LEFT")
+        return (value === "CENTER" || value === "RIGHT") ? value : "LEFT"
+    }
+
     NowPlayingTheme { id: np }
+
+    /**
+     * 底部控制区固定预留「hover 展开后」的高度：
+     * 控制条只在自身区域内做展开动画，内容区（封面/信息/歌词）不再随 hover 变高变矮。
+     */
+    readonly property real controlsReservedHeight: controls ? controls.reservedHeight : 0
 
     /** 鼠标有活动：显示控制条并重新计时。 */
     function pokeControls() {
@@ -152,7 +166,7 @@ Item {
         anchors.fill: parent
         // 窄屏头部从左上角开始，要给顶部浮动按钮（返回/全屏）让出位置
         anchors.topMargin: page.wide ? Theme.spacingXl : 56
-        anchors.bottomMargin: controls.height
+        anchors.bottomMargin: page.controlsReservedHeight
         clip: true
         // 全屏歌词打开时隐藏页内内容，避免两层歌词叠在一起
         visible: !page.showFullLyrics
@@ -170,7 +184,7 @@ Item {
             hintColor: Theme.withAlpha(np.foreground, 0.5)
         }
 
-        // ---- 宽屏：左信息 + 右歌词 ----
+        // ---- 宽屏：居中的「左信息 + 右歌词」两栏 ----
         Item {
             id: wideLayout
 
@@ -181,18 +195,20 @@ Item {
                 id: wideLeft
 
                 anchors.left: parent.left
+                anchors.leftMargin: page.sideMargin
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: page.wideLeftWidth
                 coverSize: page.wideCoverSize
-                contentPadding: Theme.spacingXl
+                alignment: page.infoAlignment
+                contentPadding: 0
                 onActivity: page.pokeControls()
             }
 
             LyricsPane {
                 anchors.left: wideLeft.right
                 anchors.right: parent.right
-                anchors.rightMargin: Math.max(Theme.spacingXl, parent.width * 0.055)
+                anchors.rightMargin: page.sideMargin
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.topMargin: Theme.spacingMd
@@ -222,6 +238,7 @@ Item {
                 height: contentHeight
                 compact: true
                 coverSize: page.narrowCoverSize
+                alignment: page.infoAlignment
                 onActivity: page.pokeControls()
             }
 
