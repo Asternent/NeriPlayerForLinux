@@ -56,23 +56,37 @@ Item {
     property var _eventHandlers: []
     /** 上次请求时的音源开关，用于在设置变化时强制重取。 */
     property string _sourceFlags: ""
+    /** 请求序号：只接受最后一次请求的结果，避免并发刷新时旧响应覆盖新数据。 */
+    property int _loadSeq: 0
 
     // ------------------------------------------------------------------ 数据加载
 
     /** @param force 忽略后端短缓存（下拉刷新 / 登录态变化 / 音源开关变化）。 */
     function reload(force) {
         if (!Api.connected) {
-            // 后端还没连上：等 connected 事件再加载，避免误报「后端未连接」
+            // 后端还没连上：不发起请求，等 connected 变化后自动重载；已有内容时保留，
+            // 首次加载则给出错误卡，避免一直转圈。
+            if (!loadedOnce) {
+                loading = false
+                loadedOnce = true
+            }
+            if (loadError === "")
+                loadError = "后端未连接"
             return
         }
+        const seq = ++page._loadSeq
         refreshing = true
         refreshStartedAt = Date.now()
         if (!loadedOnce)
             loading = true
         loadError = ""
+        loadTimeout.restart()
         refreshContinuePlaying()
 
         Api.call("online.home", force ? { "refresh": true } : {}).then(function(result) {
+            if (seq !== page._loadSeq)
+                return
+            loadTimeout.stop()
             homeData = result || null
             homeErrors = (result && result.errors) ? result.errors : []
             // 兜底：history.continuePlaying 不可用时用聚合结果里的继续播放
@@ -81,11 +95,29 @@ Item {
                 continueSongs = result.continuePlaying.songs
             finishLoad()
         }).catch(function(error) {
+            if (seq !== page._loadSeq)
+                return
+            loadTimeout.stop()
             homeData = null
             homeErrors = []
             loadError = (error && error.message) ? error.message : "无法连接在线推荐服务"
             finishLoad()
         })
+    }
+
+    /** 请求兜底超时：网络卡住时也要结束加载态并给出可点击重试的错误卡。 */
+    property Timer loadTimeout: Timer {
+        interval: 25000
+        repeat: false
+        onTriggered: {
+            if (!page.loading && !page.refreshing)
+                return
+            ++page._loadSeq
+            page.homeData = null
+            page.homeErrors = []
+            page.loadError = "加载超时，请检查网络后重试"
+            page.finishLoad()
+        }
     }
 
     /** 刷新开始时间，用于保证指示器至少显示一小段时间。 */
@@ -125,7 +157,11 @@ Item {
 
     // ------------------------------------------------------------------ 栏目构建
 
-    /** 首页栏目开关（Settings.homeCards；旧设置里「为你推荐」叫 recommended）。 */
+    /**
+     * 首页栏目开关（Settings.homeCards）。
+     * 新字段为 dailyRecommend / privateFm / biliMusic / ranks / newSongs / playlists；
+     * 旧配置里的 hotTracks / recommended 继续生效（ranks 与 hotTracks、playlists 与 recommended 同时成立才显示）。
+     */
     function cardEnabled(id) {
         const cards = Settings.values ? Settings.values.homeCards : undefined
         if (!cards)
@@ -136,12 +172,24 @@ Item {
         case "guessYouLike":
             // 同时兼容旧字段 recommended 与新字段 guessYouLike
             return cards.guessYouLike !== false && cards.recommended !== false
-        case "hotTracks":
         case "ranks":
-            return cards.hotTracks !== false
+            return cards.ranks !== false && cards.hotTracks !== false
+        case "playlists":
+            return cards.playlists !== false && cards.recommended !== false
         case "radar":
             return cards.radar !== false
-        case "playlists":
+        case "dailyRecommend":
+            return cards.dailyRecommend !== false
+        case "privateFm":
+            return cards.privateFm !== false
+        case "biliMusic":
+            return cards.biliMusic !== false
+        case "newSongs":
+            return cards.newSongs !== false
+        // 旧后端兜底字段（没有 sections 时按兼容字段拼栏目）
+        case "hotTracks":
+            return cards.hotTracks !== false
+        case "hotLists":
             return cards.recommended !== false
         default:
             return true
@@ -366,19 +414,22 @@ Item {
         connectTimeout.stop()
     }
 
-    // 后端连上后自动开始加载；长时间连不上时给出错误卡而不是一直转圈
+    // 后端断线重连后自动重新加载；断线时立即结束加载态并给出错误卡（不要无限转圈）
     Connections {
-        target: Api
+        target: Backend
 
         function onConnectedChanged() {
-            if (Api.connected) {
+            if (Backend.connected) {
                 connectTimeout.stop()
                 page._sourceFlags = page.currentSourceFlags()
-                page.reload(false)
-            } else if (page.loadedOnce || !page.loading) {
-                page.homeData = null
-                page.homeErrors = []
-                page.loadError = "后端未连接"
+                // 首次加载 / 加载失败（含断线）时强制重取，否则走短缓存快速刷新
+                page.reload(page.loadError !== "" || !page.loadedOnce)
+            } else {
+                ++page._loadSeq
+                page.loadTimeout.stop()
+                page.loading = false
+                page.refreshing = false
+                page.loadError = "后端未连接，正在等待重连…"
             }
         }
     }
@@ -419,7 +470,8 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: page.sideMargin
             anchors.right: parent.right
-            anchors.rightMargin: page.sideMargin
+            // 右侧给常驻刷新按钮留出位置，标题过长时省略而不是压到按钮上
+            anchors.rightMargin: page.sideMargin + 52
             anchors.verticalCenter: parent.verticalCenter
             spacing: page.compactHeader ? 0 : 2
 
@@ -464,6 +516,31 @@ Item {
                         NumberAnimation { duration: Theme.motionShort }
                     }
                 }
+            }
+        }
+
+        // 常驻刷新按钮：下拉刷新在桌面端不容易发现，标题栏固定给一个入口。
+        IconButton {
+            id: headerRefreshButton
+
+            anchors.right: parent.right
+            anchors.rightMargin: page.sideMargin - 8
+            anchors.verticalCenter: parent.verticalCenter
+            icon: "refresh"
+            iconSize: 24
+            size: 44
+            tooltip: page.refreshing ? "正在刷新首页…" : "刷新首页"
+            opacity: page.refreshing ? 0.5 : 1
+            enabled: !page.refreshing
+            onClicked: page.reload(true)
+
+            // 刷新中旋转图标（IconButton 整体旋转对圆形 hover 底无视觉影响）
+            RotationAnimation on rotation {
+                running: page.refreshing
+                loops: Animation.Infinite
+                from: 0
+                to: 360
+                duration: 900
             }
         }
     }
