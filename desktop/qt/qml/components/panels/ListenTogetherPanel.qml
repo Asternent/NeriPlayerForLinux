@@ -369,7 +369,12 @@ PanelShell {
                     id: serverField
 
                     width: parent.width
-                    text: panel.status.serverUrl !== undefined ? String(panel.status.serverUrl || "") : ""
+                    // 未配置时直接填后端给的默认服务端，用户点「保存并连接」即可；仍可手动改。
+                    text: {
+                        const saved = panel.status.serverUrl !== undefined
+                                      ? String(panel.status.serverUrl || "") : ""
+                        return saved !== "" ? saved : panel.defaultServerUrl
+                    }
                     placeholderText: panel.defaultServerUrl
                 }
 
