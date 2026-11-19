@@ -37,7 +37,58 @@ QtObject {
     readonly property string title: song && song.title ? song.title : ""
     readonly property string artist: song && song.artist ? song.artist : ""
     readonly property string album: song && song.album ? song.album : ""
-    readonly property real progress: durationMs > 0 ? Math.min(1, Math.max(0, positionMs / durationMs)) : 0
+    readonly property real progress: durationMs > 0
+                                      ? Math.min(1, Math.max(0, smoothPositionMs / durationMs)) : 0
+
+    // ---- 平滑播放进度 ----
+    // 后端 "player" 事件只有 4Hz，进度直接用来驱动进度条/逐字高亮会一跳一跳；
+    // 这里用本地定时器在两次快照之间线性推进，快照到达时只做小幅纠偏。
+    // seek / 暂停 / 切歌这些真实跳变直接吸附到真实值（见 _syncSmoothPosition）。
+    property real smoothPositionMs: 0
+    property real _smoothBaseMs: 0
+    property real _smoothBaseStamp: 0
+    /** seek 后短暂忽略后端旧快照，避免平滑值被上一帧的旧进度拉回去。 */
+    property real _smoothIgnoreUntil: 0
+    readonly property real _smoothSnapThresholdMs: 400
+
+    property Timer smoothTimer: Timer {
+        interval: 33
+        repeat: true
+        // 时长未知（直播/流）时也推进，只是不做上界夹取
+        running: player.playing
+        onTriggered: player._advanceSmoothPosition()
+    }
+
+    function _advanceSmoothPosition() {
+        if (!player.playing)
+            return
+        const elapsed = Date.now() - player._smoothBaseStamp
+        const next = player._smoothBaseMs + elapsed * (player.speed > 0 ? player.speed : 1)
+        player.smoothPositionMs = Math.max(0, player.durationMs > 0
+                                           ? Math.min(player.durationMs, next) : next)
+    }
+
+    /** 用一次真实进度校正平滑值：正常播放只纠偏一半，避免 4Hz 快照把动画拉回跳变。 */
+    function _syncSmoothPosition(real) {
+        if (Date.now() < player._smoothIgnoreUntil)
+            return
+        if (!player.playing
+                || Math.abs(real - player.smoothPositionMs) > player._smoothSnapThresholdMs) {
+            player.smoothPositionMs = real
+            player._smoothBaseMs = real
+            player._smoothBaseStamp = Date.now()
+            return
+        }
+        player._smoothBaseMs = player.smoothPositionMs + (real - player.smoothPositionMs) * 0.5
+        player._smoothBaseStamp = Date.now()
+    }
+
+    onSpeedChanged: {
+        if (playing) {
+            _smoothBaseMs = smoothPositionMs
+            _smoothBaseStamp = Date.now()
+        }
+    }
 
     // 播放页跳转入口用：在线歌曲才带 artistId/albumId
     readonly property string songArtistId: song && song.artistId !== undefined && song.artistId !== null ? String(song.artistId) : ""
@@ -62,8 +113,14 @@ QtObject {
     function next() { _send("player.next") }
     function previous() { _send("player.previous") }
     function seekTo(ms) {
-        positionMs = Math.max(0, ms)
-        _send("player.seekTo", { positionMs: Math.max(0, Math.round(ms)) })
+        const target = Math.max(0, ms)
+        positionMs = target
+        // 点击 seek 用真实值，但平滑进度要立刻跟上，否则会从旧位置慢慢追过去
+        smoothPositionMs = target
+        _smoothBaseMs = target
+        _smoothBaseStamp = Date.now()
+        _smoothIgnoreUntil = Date.now() + 400
+        _send("player.seekTo", { positionMs: Math.round(target) })
     }
     function seekBy(deltaMs) { seekTo(positionMs + deltaMs) }
 
@@ -221,6 +278,8 @@ QtObject {
         if (data.coverSeed !== undefined)
             coverSeed = data.coverSeed ? String(data.coverSeed) : ""
         if (data.lyrics !== undefined && data.lyrics !== null) lyrics = data.lyrics
+        if (data.positionMs !== undefined)
+            _syncSmoothPosition(positionMs)
     }
 
     function applySnapshot(data) { _apply(data) }
