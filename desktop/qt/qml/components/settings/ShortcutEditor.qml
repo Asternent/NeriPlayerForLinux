@@ -3,7 +3,8 @@ import "../"
 
 // 快捷键设置：从后端 shortcuts.catalog 加载动作表，按分类分组展示。
 // 应用内键位可点击录制（写入 Settings.shortcuts.local，保留其它条目）；
-// 全局键位由桌面系统（xdg portal）管理，这里只读展示默认值并提供跳转入口。
+// 全局键位由桌面系统（xdg portal）管理，这里通过 shortcuts.current 读取系统当前实际绑定
+// （只读展示，修改走「在系统设置中修改…」）；桌面环境不支持读取时隐藏全局列。
 Item {
     id: root
 
@@ -23,7 +24,9 @@ Item {
     // 两列左侧起始 x；右侧再留一格给「默认」重置按钮（与旧 Compose 版一致）。
     readonly property real resetColumnWidth: 56
     readonly property real globalColumnX: Math.max(0, width - resetColumnWidth - capsuleWidth)
-    readonly property real localColumnX: Math.max(0, globalColumnX - columnGap - capsuleWidth)
+    readonly property real localColumnX: root.showGlobalColumn
+                                          ? Math.max(0, globalColumnX - columnGap - capsuleWidth)
+                                          : Math.max(0, width - resetColumnWidth - capsuleWidth)
 
     width: parent ? parent.width : 0
     implicitHeight: content.height
@@ -48,8 +51,10 @@ Item {
     }
 
     Component.onCompleted: {
-        if (Backend.connected)
+        if (Backend.connected) {
             root.loadCatalog()
+            root.refreshGlobalBindings()
+        }
     }
 
     // 页面可能在后端连上之前就创建：连上后再加载动作表。
@@ -58,6 +63,52 @@ Item {
         function onConnectedChanged() {
             if (Backend.connected && root.catalog.length === 0)
                 root.loadCatalog()
+            if (Backend.connected)
+                root.refreshGlobalBindings()
+        }
+    }
+
+    // ---------------------------------------------------------------- 全局快捷键（系统当前实际绑定）
+
+    /** 系统当前全局绑定：actionId → 触发器文案（空串表示未绑定）。 */
+    property var globalBindings: ({})
+    /** 0=尚未读取 1=可读取 2=当前桌面不支持读取。 */
+    property int globalState: 0
+    /** 是否显示「全局」列；桌面环境读不到时整列隐藏（不再显示误导性的默认值）。 */
+    readonly property bool showGlobalColumn: root.globalState !== 2
+    readonly property bool globalLoaded: root.globalState === 1
+
+    function refreshGlobalBindings() {
+        if (!Backend.connected)
+            return
+        Api.call("shortcuts.current").then(function(result) {
+            if (result && result.supported === true) {
+                root.globalBindings = result.bindings ? result.bindings : ({})
+                root.globalState = 1
+            } else {
+                root.globalBindings = ({})
+                root.globalState = 2
+            }
+        }).catch(function() {
+            root.globalBindings = ({})
+            root.globalState = 2
+        })
+    }
+
+    // 设置页常驻但可能不可见：低频轮询 + 窗口重新获得焦点时刷新（系统配置对话框关闭后回来能看到新值）
+    Timer {
+        id: globalRefreshTimer
+        interval: 8000
+        repeat: true
+        running: Backend.connected
+        onTriggered: root.refreshGlobalBindings()
+    }
+
+    Connections {
+        target: root.Window.window
+        function onActiveChanged() {
+            if (root.Window.window && root.Window.window.active)
+                root.refreshGlobalBindings()
         }
     }
 
@@ -81,9 +132,20 @@ Item {
         Api.call("shortcut.openGlobalSettings").then(function(result) {
             if (result && result.ok === false)
                 Toast.show("当前桌面环境不支持全局快捷键设置", "error")
+            // 系统配置窗口关闭后刷新一次（KDE 的 ConfigureShortcuts 是异步返回的）
+            globalRefreshTimer.restart()
+            Qt.callLater(root.refreshGlobalBindings)
+            refreshDelayTimer.restart()
         }).catch(function(error) {
             Toast.show("打开系统快捷键设置失败：" + (error && error.message ? error.message : error), "error")
         })
+    }
+
+    Timer {
+        id: refreshDelayTimer
+        interval: 1500
+        repeat: false
+        onTriggered: root.refreshGlobalBindings()
     }
 
     // ---------------------------------------------------------------- 绑定读取
@@ -104,7 +166,34 @@ Item {
     }
 
     function globalText(action) {
-        return action.globalDefault ? action.globalDefault : "未设置"
+        if (!root.showGlobalColumn)
+            return "—"
+        if (!root.globalLoaded)
+            return "读取中…"
+        const map = root.globalBindings || ({})
+        const raw = map[action.id]
+        if (raw === undefined)
+            return "未设置"
+        const text = root.formatGlobalTrigger(String(raw))
+        return text === "" ? "未设置" : text
+    }
+
+    /** KDE 返回的是本地化文案（如 "Ctrl+Shift+空格"），把常见中文键名换成界面统一写法。 */
+    function formatGlobalTrigger(value) {
+        let text = String(value || "").trim()
+        if (text === "" || text.toLowerCase() === "none")
+            return ""
+        const names = [
+            ["左方向", "Left"], ["右方向", "Right"], ["上方向", "Up"], ["下方向", "Down"],
+            ["空格", "Space"], ["回车", "Enter"], ["退格", "Backspace"], ["删除", "Delete"],
+            ["制表符", "Tab"], ["退出", "Esc"], ["插入", "Insert"], ["菜单", "Menu"]
+        ]
+        for (let i = 0; i < names.length; ++i)
+            text = text.split(names[i][0]).join(names[i][1])
+        const parts = text.split(",")
+        for (let i = 0; i < parts.length; ++i)
+            parts[i] = parts[i].trim()
+        return parts.filter(function(part) { return part !== "" }).join(" / ")
     }
 
     /** 当前动作的应用内键位是否与别的动作重复；返回被占用的动作名，无冲突返回空串。 */
@@ -316,6 +405,19 @@ Item {
             }
         }
 
+        SettingsNote {
+            width: content.width
+            visible: root.showGlobalColumn
+            text: "「全局」列显示桌面系统当前实际生效的绑定（关闭后显示「未设置」）；"
+                  + "修改请点上方「在系统设置中修改…」。"
+        }
+
+        SettingsNote {
+            width: content.width
+            visible: !root.showGlobalColumn
+            text: "当前桌面环境无法读取全局快捷键，已隐藏该列；全局键位仍由桌面系统管理。"
+        }
+
         // 表头
         Item {
             width: content.width
@@ -346,6 +448,7 @@ Item {
             Text {
                 x: root.globalColumnX
                 width: root.capsuleWidth
+                visible: root.showGlobalColumn
                 anchors.verticalCenter: parent.verticalCenter
                 horizontalAlignment: Text.AlignHCenter
                 text: "全局"
@@ -488,7 +591,8 @@ Item {
                         // 重置入口：应用内改过才出现「默认」（旧 Compose 版同一行为）
                         Item {
                             id: resetButton
-                            x: root.globalColumnX + root.capsuleWidth + Theme.spacingXs
+                            x: (root.showGlobalColumn ? root.globalColumnX : root.localColumnX)
+                               + root.capsuleWidth + Theme.spacingXs
                             width: root.resetColumnWidth - Theme.spacingXs
                             height: root.capsuleHeight
                             anchors.verticalCenter: parent.verticalCenter
@@ -599,6 +703,7 @@ Item {
                         // ---------------- 全局键位（只读，由桌面系统管理）
                         Rectangle {
                             x: root.globalColumnX
+                            visible: root.showGlobalColumn
                             anchors.verticalCenter: parent.verticalCenter
                             width: root.capsuleWidth
                             height: root.capsuleHeight
