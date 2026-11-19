@@ -32,6 +32,9 @@ Item {
     property int scanTotal: 0
     property int scanFound: 0
 
+    // ---- 手动刷新状态（顶部刷新按钮）----
+    property bool refreshing: false
+
     readonly property string currentKey: Player.hasSong && Player.song ? Player.song.key : ""
 
     // ---- 搜索过滤（本地过滤：歌曲 / 歌手 / 专辑 / 歌单）----
@@ -104,6 +107,19 @@ Item {
         Nav.push("localPlaylist", playlistId)
     }
 
+    // 本地专辑卡片：打开统一专辑详情页（按专辑名 + 歌手过滤本地媒体库）。
+    function openLocalAlbum(group) {
+        if (!group)
+            return
+        Nav.push("albumDetail", {
+                     "source": "LOCAL",
+                     "id": String(group.name || ""),
+                     "name": String(group.name || ""),
+                     "creator": String(group.artist || ""),
+                     "trackCount": group.songs ? group.songs.length : 0
+                 })
+    }
+
     // ---- 数据加载 ----
     function reloadLibrary() {
         page.loading = true
@@ -145,13 +161,33 @@ Item {
         })
     }
 
-    function rescan() {
-        Toast.show("正在扫描本地音乐…")
-        Api.call("library.scan").then(function() {
+    function rescan(notify) {
+        if (notify !== false)
+            Toast.show("正在扫描本地音乐…")
+        Api.call("library.scan").then(function(result) {
+            page.refreshing = false
             page.reloadLibrary()
+            page.reloadScanState()
         }).catch(function(error) {
+            page.refreshing = false
             Toast.show(error && error.message ? error.message : "扫描失败", "error")
         })
+    }
+
+    /**
+     * 顶部刷新按钮：重新加载当前页数据（歌曲 / 收藏 / 在线音源歌单）并触发一次媒体库重扫。
+     * scan 是 suspend 命令，这里不阻塞界面，扫描进度由 library.scan 事件驱动。
+     */
+    function refreshAll() {
+        if (page.refreshing)
+            return
+        page.refreshing = true
+        page.reloadLibrary()
+        page.reloadCollections()
+        page.reloadScanState()
+        if (page.primaryTab === "online")
+            onlineSourcesTab.refresh()
+        page.rescan(false)
     }
 
     // ---- 后端事件 ----
@@ -242,12 +278,22 @@ Item {
             }
 
             IconButton {
-                visible: page.primaryTab === "local"
+                id: refreshButton
                 icon: "refresh"
                 iconSize: 22
                 size: 42
-                tooltip: "重新扫描"
-                onClicked: page.rescan()
+                tooltip: page.refreshing ? "正在刷新媒体库…" : "刷新（重新加载并重扫媒体库）"
+                opacity: page.refreshing ? 0.5 : 1
+                enabled: !page.refreshing
+                onClicked: page.refreshAll()
+
+                RotationAnimation on rotation {
+                    running: page.refreshing
+                    loops: Animation.Infinite
+                    from: 0
+                    to: 360
+                    duration: 900
+                }
             }
 
             // 搜索框（本地过滤，不需要请求后端；在线音源 Tab 不适用）
@@ -405,7 +451,7 @@ Item {
             anchors.right: parent.right
             visible: page.errorText !== ""
             message: page.errorText
-            onRetryClicked: page.reloadLibrary()
+            onRetryClicked: page.refreshAll()
         }
 
         // ---- 本地 Tab ----
@@ -598,7 +644,7 @@ Item {
                                       + (group && group.songs ? group.songs.length : 0) + " 首"
                             coverPath: group && group.songs && group.songs.length > 0 && group.songs[0].artworkPath
                                        ? group.songs[0].artworkPath : ""
-                            onClicked: page.playSongs(group.songs, 0)
+                            onClicked: page.openLocalAlbum(group)
                         }
                     }
                 }
@@ -828,6 +874,7 @@ Item {
 
         // ---- 在线音源 Tab ----
         OnlineSourcesTab {
+            id: onlineSourcesTab
             anchors.top: scanBanner.bottom
             anchors.left: parent.left
             anchors.right: parent.right
