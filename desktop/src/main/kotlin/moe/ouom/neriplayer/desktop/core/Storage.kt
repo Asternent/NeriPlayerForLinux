@@ -73,9 +73,17 @@ enum class DarkModeSetting { AUTO, LIGHT, DARK }
 data class HomeCardSettings(
     val continuePlaying: Boolean = true,
     val guessYouLike: Boolean = true,
+    /** 兼容旧字段：与 ranks 同时控制「排行榜」栏目。 */
     val hotTracks: Boolean = true,
     val radar: Boolean = true,
+    /** 兼容旧字段：与 playlists 同时控制「推荐歌单」栏目。 */
     val recommended: Boolean = true,
+    val dailyRecommend: Boolean = true,
+    val privateFm: Boolean = true,
+    val biliMusic: Boolean = true,
+    val ranks: Boolean = true,
+    val newSongs: Boolean = true,
+    val playlists: Boolean = true,
 )
 
 @Serializable
@@ -121,6 +129,8 @@ data class AppSettings(
     val neteaseEnabled: Boolean = true,
     val bilibiliEnabled: Boolean = true,
     val youtubeEnabled: Boolean = false,
+    /** 网易云音源不可播时自动到哔哩哔哩搜索同名歌曲兜底。 */
+    val neteaseAutoSourceSwitch: Boolean = true,
     val defaultStartTab: String = "home",
     val sleepTimerMinutes: Int = 30,
     val resumeLastQueue: Boolean = true,
